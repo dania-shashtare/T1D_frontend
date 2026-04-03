@@ -104,20 +104,69 @@ class _PatientOnboardingScreenState extends State<PatientOnboardingScreen> {
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  Future<void> _nextStep() async {
-    if (!_validateStep()) return;
+  Future<void> _pickDiagnosisDate() async {
+    final now = DateTime.now();
 
-    if (currentStep < totalSteps - 1) {
-      setState(() => currentStep++);
-    } else {
-      await _submitData();
+    DateTime initialDate = now;
+    if (diagnosisDateController.text.trim().isNotEmpty) {
+      try {
+        initialDate = DateTime.parse(diagnosisDateController.text.trim());
+      } catch (_) {}
+    }
+
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: DateTime(2000),
+      lastDate: now,
+    );
+
+    if (picked != null) {
+      final formatted =
+          "${picked.year.toString().padLeft(4, '0')}-"
+          "${picked.month.toString().padLeft(2, '0')}-"
+          "${picked.day.toString().padLeft(2, '0')}";
+
+      setState(() {
+        diagnosisDateController.text = formatted;
+      });
     }
   }
 
-  void _previousStep() {
-    if (currentStep > 0) {
-      setState(() => currentStep--);
+  Future<void> _nextStep() async {
+    if (!_validateStep()) return;
+
+    if (currentStep == totalSteps - 1) {
+      await _submitData();
+      return;
     }
+
+    final managementTypeStep = isChild ? 3 : 2;
+    final managementDetailsStep = isChild ? 4 : 3;
+
+    setState(() {
+      if (currentStep == managementTypeStep &&
+          managementType == "I Don't Know") {
+        currentStep = managementDetailsStep + 1;
+      } else {
+        currentStep++;
+      }
+    });
+  }
+
+  void _previousStep() {
+    if (currentStep <= 0) return;
+
+    final managementTypeStep = isChild ? 3 : 2;
+    final allergyStep = isChild ? 5 : 4;
+
+    setState(() {
+      if (currentStep == allergyStep && managementType == "I Don't Know") {
+        currentStep = managementTypeStep;
+      } else {
+        currentStep--;
+      }
+    });
   }
 
   bool _validateStep() {
@@ -247,7 +296,6 @@ class _PatientOnboardingScreenState extends State<PatientOnboardingScreen> {
 
       if (!mounted) return;
 
-      // لاحقًا وديه على الهوم
       // Navigator.pushReplacement(...);
     } catch (e) {
       _showSnack(e.toString().replaceAll("Exception: ", ""));
@@ -642,11 +690,21 @@ class _PatientOnboardingScreenState extends State<PatientOnboardingScreen> {
           icon: Icons.monitor_weight_outlined,
         ),
         const SizedBox(height: 14),
-        _textField(
+        TextField(
           controller: diagnosisDateController,
-          label: "Diagnosis Date (YYYY-MM-DD)",
-          icon: Icons.calendar_month_outlined,
-          hint: "Example: 2022-01-01",
+          readOnly: true,
+          onTap: _pickDiagnosisDate,
+          decoration:
+              _inputDecoration(
+                label: "Diagnosis Date",
+                icon: Icons.calendar_month_outlined,
+                hint: "Select diagnosis date",
+              ).copyWith(
+                suffixIcon: IconButton(
+                  onPressed: _pickDiagnosisDate,
+                  icon: const Icon(Icons.calendar_month_outlined),
+                ),
+              ),
         ),
       ],
     );
@@ -816,19 +874,7 @@ class _PatientOnboardingScreenState extends State<PatientOnboardingScreen> {
       );
     }
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: const Color(0xffF8FCFF),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xffBBDEFB)),
-      ),
-      child: const Text(
-        "No additional details are required for this option.",
-        style: TextStyle(fontSize: 16),
-      ),
-    );
+    return const SizedBox.shrink();
   }
 
   Widget _allergyStep() {

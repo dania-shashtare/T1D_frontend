@@ -1,3 +1,5 @@
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'services/onboarding_api.dart';
 
@@ -15,6 +17,8 @@ class _NutritionistOnboardingScreenState
     extends State<NutritionistOnboardingScreen> {
   int currentStep = 0;
   bool isSaving = false;
+  bool isUploadingProof = false;
+  bool isUploadingCv = false;
 
   // Step 1
   final fullNameController = TextEditingController();
@@ -40,13 +44,8 @@ class _NutritionistOnboardingScreenState
   String professionalProofName = "";
   String cvFileName = "";
 
-  // Step 4
-  String patientConnectionMethod = "Invitation Code";
-
-  bool notifyAfterMealHighs = false;
-  bool notifyNutritionRequests = false;
-  bool notifyMealPlanFollowUp = false;
-  bool notifyFoodAllergyAlerts = false;
+  String professionalProofUrl = "";
+  String cvFileUrl = "";
 
   @override
   void dispose() {
@@ -59,12 +58,25 @@ class _NutritionistOnboardingScreenState
     super.dispose();
   }
 
-  int get totalSteps => 4;
+  int get totalSteps => 3;
 
   void _showSnack(String message) {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  List<String> _extractNameParts(String value) {
+    return value
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((part) => part.trim().isNotEmpty)
+        .toList();
+  }
+
+  bool _isValidFullName(String value) {
+    final parts = _extractNameParts(value);
+    return parts.length >= 4;
   }
 
   Future<void> _nextStep() async {
@@ -92,6 +104,11 @@ class _NutritionistOnboardingScreenState
         return false;
       }
 
+      if (!_isValidFullName(fullNameController.text)) {
+        _showSnack("Please enter your full name as 4 names or more");
+        return false;
+      }
+
       if (specialty == "Other" &&
           otherSpecialtyController.text.trim().isEmpty) {
         _showSnack("Please enter your specialty");
@@ -102,6 +119,11 @@ class _NutritionistOnboardingScreenState
     if (currentStep == 1) {
       if (yearsOfExperienceController.text.trim().isEmpty) {
         _showSnack("Please enter years of experience");
+        return false;
+      }
+
+      if (int.tryParse(yearsOfExperienceController.text.trim()) == null) {
+        _showSnack("Years of experience must be a valid number");
         return false;
       }
 
@@ -118,7 +140,7 @@ class _NutritionistOnboardingScreenState
     }
 
     if (currentStep == 2) {
-      if (professionalProofName.isEmpty) {
+      if (professionalProofName.isEmpty || professionalProofUrl.isEmpty) {
         _showSnack("Please upload professional proof");
         return false;
       }
@@ -147,12 +169,9 @@ class _NutritionistOnboardingScreenState
         planningStyle: planningStyle,
         otherPlanningStyle: otherPlanningStyleController.text.trim(),
         professionalProofName: professionalProofName,
+        professionalProofUrl: professionalProofUrl,
         cvFileName: cvFileName,
-        patientConnectionMethod: patientConnectionMethod,
-        notifyAfterMealHighs: notifyAfterMealHighs,
-        notifyNutritionRequests: notifyNutritionRequests,
-        notifyMealPlanFollowUp: notifyMealPlanFollowUp,
-        notifyFoodAllergyAlerts: notifyFoodAllergyAlerts,
+        cvFileUrl: cvFileUrl,
       );
 
       _showSnack("Nutritionist profile saved successfully ✅");
@@ -165,16 +184,76 @@ class _NutritionistOnboardingScreenState
     }
   }
 
-  void _mockPickProfessionalProof() {
-    setState(() {
-      professionalProofName = "nutritionist_professional_proof.pdf";
-    });
+  Future<void> _pickAndUploadProfessionalProof() async {
+    try {
+      setState(() => isUploadingProof = true);
+
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowMultiple: false,
+        withData: kIsWeb,
+        allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
+      );
+
+      if (result == null || result.files.isEmpty) return;
+
+      final picked = result.files.single;
+
+      final uploadResult = await OnboardingApi.uploadNutritionistFile(
+        userId: widget.userId,
+        pickedFile: picked,
+        fileFieldName: "professionalProof",
+      );
+
+      setState(() {
+        professionalProofName = uploadResult["fileName"] ?? picked.name;
+        professionalProofUrl = uploadResult["fileUrl"] ?? "";
+      });
+
+      _showSnack("Professional proof uploaded successfully");
+    } catch (e) {
+      _showSnack(e.toString().replaceAll("Exception: ", ""));
+    } finally {
+      if (mounted) {
+        setState(() => isUploadingProof = false);
+      }
+    }
   }
 
-  void _mockPickCv() {
-    setState(() {
-      cvFileName = "nutritionist_cv.pdf";
-    });
+  Future<void> _pickAndUploadCv() async {
+    try {
+      setState(() => isUploadingCv = true);
+
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowMultiple: false,
+        withData: kIsWeb,
+        allowedExtensions: ['pdf', 'doc', 'docx'],
+      );
+
+      if (result == null || result.files.isEmpty) return;
+
+      final picked = result.files.single;
+
+      final uploadResult = await OnboardingApi.uploadNutritionistFile(
+        userId: widget.userId,
+        pickedFile: picked,
+        fileFieldName: "cvFile",
+      );
+
+      setState(() {
+        cvFileName = uploadResult["fileName"] ?? picked.name;
+        cvFileUrl = uploadResult["fileUrl"] ?? "";
+      });
+
+      _showSnack("CV uploaded successfully");
+    } catch (e) {
+      _showSnack(e.toString().replaceAll("Exception: ", ""));
+    } finally {
+      if (mounted) {
+        setState(() => isUploadingCv = false);
+      }
+    }
   }
 
   String _stepTitle() {
@@ -185,8 +264,6 @@ class _NutritionistOnboardingScreenState
         return "Professional Details";
       case 2:
         return "Professional Verification";
-      case 3:
-        return "App Preferences";
       default:
         return "";
     }
@@ -200,8 +277,6 @@ class _NutritionistOnboardingScreenState
         return 'lib/assets/images/food2.png';
       case 2:
         return 'lib/assets/images/food3.png';
-      case 3:
-        return 'lib/assets/images/food4.png';
       default:
         return 'lib/assets/images/food1.png';
     }
@@ -215,8 +290,6 @@ class _NutritionistOnboardingScreenState
         return _professionalDetailsStep();
       case 2:
         return _verificationStep();
-      case 3:
-        return _preferencesStep();
       default:
         return const SizedBox.shrink();
     }
@@ -442,10 +515,21 @@ class _NutritionistOnboardingScreenState
   Widget _basicInfoStep() {
     return Column(
       children: [
-        _textField(
+        TextField(
           controller: fullNameController,
-          label: "Full Name",
-          icon: Icons.person_outline,
+          decoration: _inputDecoration(
+            label: "Full Name",
+            icon: Icons.person_outline,
+            hint: "Enter your full name (4 names or more)",
+          ),
+        ),
+        const SizedBox(height: 8),
+        const Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            "The full name must contain at least 4 names",
+            style: TextStyle(fontSize: 12, color: Colors.black54),
+          ),
         ),
         const SizedBox(height: 14),
         _textField(
@@ -604,73 +688,19 @@ class _NutritionistOnboardingScreenState
           subtitle: professionalProofName.isEmpty
               ? "Degree or professional proof"
               : professionalProofName,
-          buttonText: "Upload File",
-          onTap: _mockPickProfessionalProof,
+          buttonText: isUploadingProof ? "Uploading..." : "Upload File",
+          onTap: isUploadingProof ? null : _pickAndUploadProfessionalProof,
         ),
         const SizedBox(height: 14),
         _uploadCard(
           title: "Upload CV (Optional)",
           subtitle: cvFileName.isEmpty ? "You can upload your CV" : cvFileName,
-          buttonText: "Upload CV",
-          onTap: _mockPickCv,
+          buttonText: isUploadingCv ? "Uploading..." : "Upload CV",
+          onTap: isUploadingCv ? null : _pickAndUploadCv,
         ),
         const SizedBox(height: 16),
         _infoBox(
-          "Your account will remain under review until verification is completed.",
-        ),
-      ],
-    );
-  }
-
-  Widget _preferencesStep() {
-    return Column(
-      children: [
-        DropdownButtonFormField<String>(
-          initialValue: patientConnectionMethod,
-          decoration: _inputDecoration(
-            label: "How should patients connect with you?",
-            icon: Icons.link_outlined,
-          ),
-          items: const [
-            DropdownMenuItem(
-              value: "Invitation Code",
-              child: Text("Invitation Code"),
-            ),
-            DropdownMenuItem(
-              value: "Email Request",
-              child: Text("Email Request"),
-            ),
-            DropdownMenuItem(
-              value: "Manual Approval",
-              child: Text("Manual Approval"),
-            ),
-          ],
-          onChanged: (value) {
-            if (value == null) return;
-            setState(() => patientConnectionMethod = value);
-          },
-        ),
-        const SizedBox(height: 18),
-        _sectionTitle("Notification Preferences"),
-        _checkTile(
-          title: "Repeated high readings after meals",
-          value: notifyAfterMealHighs,
-          onChanged: (v) => setState(() => notifyAfterMealHighs = v),
-        ),
-        _checkTile(
-          title: "Nutrition consultation requests",
-          value: notifyNutritionRequests,
-          onChanged: (v) => setState(() => notifyNutritionRequests = v),
-        ),
-        _checkTile(
-          title: "Meal plan follow-up reminders",
-          value: notifyMealPlanFollowUp,
-          onChanged: (v) => setState(() => notifyMealPlanFollowUp = v),
-        ),
-        _checkTile(
-          title: "Food allergy related alerts",
-          value: notifyFoodAllergyAlerts,
-          onChanged: (v) => setState(() => notifyFoodAllergyAlerts = v),
+          "The selected file will be uploaded from your laptop and saved in the database.",
         ),
       ],
     );
@@ -709,7 +739,7 @@ class _NutritionistOnboardingScreenState
     required String title,
     required String subtitle,
     required String buttonText,
-    required VoidCallback onTap,
+    required VoidCallback? onTap,
   }) {
     return Container(
       width: double.infinity,
@@ -759,19 +789,22 @@ class _NutritionistOnboardingScreenState
     required TextEditingController controller,
     required String label,
     required IconData icon,
+    String? hint,
   }) {
     return TextField(
       controller: controller,
-      decoration: _inputDecoration(label: label, icon: icon),
+      decoration: _inputDecoration(label: label, icon: icon, hint: hint),
     );
   }
 
   InputDecoration _inputDecoration({
     required String label,
     required IconData icon,
+    String? hint,
   }) {
     return InputDecoration(
       labelText: label,
+      hintText: hint,
       prefixIcon: Icon(icon, color: const Color(0xff1565C0)),
       filled: true,
       fillColor: const Color(0xffF8FCFF),

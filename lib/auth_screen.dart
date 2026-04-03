@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'services/auth_api.dart';
+import 'patient_screen.dart';
+import 'forgot_password_screen.dart';
 import 'patient_onboarding_screen.dart';
 import 'parent_onboarding_screen.dart';
 import 'doctor_onboarding_screen.dart';
@@ -20,6 +24,28 @@ class _AuthScreenState extends State<AuthScreen> {
   bool hidePassword = true;
   bool hideConfirmPassword = true;
   bool isLoading = false;
+  bool _hasMinLength(String value) => value.length >= 8;
+  bool _hasUppercase(String value) => RegExp(r'[A-Z]').hasMatch(value);
+  bool _hasLowercase(String value) => RegExp(r'[a-z]').hasMatch(value);
+  bool _hasNumber(String value) => RegExp(r'[0-9]').hasMatch(value);
+  bool _hasSpecialChar(String value) =>
+      RegExp(r'[!@#$%^&*(),.?":{}|<>_\-\\/\[\]=+~`]').hasMatch(value);
+
+  String? signInGeneralError;
+  String? signUpEmailError;
+  String? signUpPasswordError;
+  String? confirmPasswordError;
+
+  bool _isStrongPassword(String value) {
+    return _hasMinLength(value) &&
+        _hasUppercase(value) &&
+        _hasLowercase(value) &&
+        _hasNumber(value) &&
+        _hasSpecialChar(value);
+  }
+
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final GoogleSignIn _googleSignIn = GoogleSignIn();
 
   // Sign in
   final signInEmail = TextEditingController();
@@ -58,6 +84,27 @@ class _AuthScreenState extends State<AuthScreen> {
     }
   }
 
+  Future<void> _pickDateOfBirth() async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime(2010),
+      firstDate: DateTime(1950),
+      lastDate: DateTime.now(),
+      helpText: 'Select Date of Birth',
+    );
+
+    if (picked != null) {
+      final formatted =
+          "${picked.year.toString().padLeft(4, '0')}-"
+          "${picked.month.toString().padLeft(2, '0')}-"
+          "${picked.day.toString().padLeft(2, '0')}";
+
+      setState(() {
+        dateOfBirth.text = formatted;
+      });
+    }
+  }
+
   Future<void> _handleSignup() async {
     if (isLoading) return;
 
@@ -69,6 +116,12 @@ class _AuthScreenState extends State<AuthScreen> {
     final dobText = dateOfBirth.text.trim();
     final dob = _parseDob(dobText);
 
+    setState(() {
+      signUpEmailError = null;
+      signUpPasswordError = null;
+      confirmPasswordError = null;
+    });
+
     if (f.isEmpty ||
         l.isEmpty ||
         e.isEmpty ||
@@ -79,13 +132,25 @@ class _AuthScreenState extends State<AuthScreen> {
       return;
     }
 
+    bool hasError = false;
+
+    if (!_isStrongPassword(p)) {
+      signUpPasswordError = "Password is not strong enough";
+      hasError = true;
+    }
+
     if (p != c) {
-      _snack("Passwords do not match");
-      return;
+      confirmPasswordError = "Passwords do not match";
+      hasError = true;
     }
 
     if (dob == null) {
-      _snack("Date of Birth must be YYYY-MM-DD");
+      _snack("Please select a valid date of birth");
+      return;
+    }
+
+    if (hasError) {
+      setState(() {});
       return;
     }
 
@@ -143,12 +208,123 @@ class _AuthScreenState extends State<AuthScreen> {
       } else {
         _snack("This role is not linked yet");
       }
+
+      _snack("Account created ✅");
+
+      firstName.clear();
+      lastName.clear();
+      signUpEmail.clear();
+      signUpPassword.clear();
+      confirmPassword.clear();
+      dateOfBirth.clear();
+
+      setState(() {
+        isSignIn = true;
+      });
     } catch (e) {
-      _snack(e.toString().replaceAll("Exception: ", ""));
+      final errorMessage = e.toString().replaceAll("Exception: ", "");
+
+      setState(() {
+        if (errorMessage.toLowerCase().contains("email already exists")) {
+          signUpEmailError = "Email already exists";
+        } else {
+          _snack(errorMessage);
+        }
+      });
     } finally {
-      if (mounted) {
-        setState(() => isLoading = false);
+      setState(() => isLoading = false);
+    }
+  }
+
+  Future<void> _handleLogin() async {
+    final email = signInEmail.text.trim();
+    final password = signInPassword.text;
+
+    setState(() {
+      signInGeneralError = null;
+    });
+
+    if (email.isEmpty || password.isEmpty) {
+      setState(() {
+        signInGeneralError = "Please enter your email and password";
+      });
+      return;
+    }
+
+    try {
+      await AuthApi.login(email: email, password: password);
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const PatientHomeScreen()),
+      );
+    } catch (e) {
+      setState(() {
+        signInGeneralError = "Invalid email or password";
+      });
+    }
+  }
+
+  Future<void> _handleGoogleSignIn() async {
+    try {
+      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+
+      if (googleUser == null) {
+        _snack("Google sign-in cancelled");
+        return;
       }
+
+      final GoogleSignInAuthentication googleAuth =
+          await googleUser.authentication;
+
+      final AuthCredential credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      final UserCredential userCredential = await _auth.signInWithCredential(
+        credential,
+      );
+
+      final User? user = userCredential.user;
+
+      if (user == null || user.email == null) {
+        _snack("Google sign-in failed");
+        return;
+      }
+
+      final email = user.email!;
+      final displayName = user.displayName ?? '';
+      final nameParts = displayName.trim().split(' ');
+      final googleFirstName = nameParts.isNotEmpty ? nameParts.first : '';
+      final googleLastName = nameParts.length > 1
+          ? nameParts.sublist(1).join(' ')
+          : '';
+
+      final result = await AuthApi.checkGoogleUser(email);
+
+      if (result['exists'] == true) {
+        _snack("Welcome back ${user.displayName ?? ''}");
+
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const PatientHomeScreen()),
+        );
+        // هون لاحقًا:
+        // Navigator.pushReplacement(... home page ...)
+      } else {
+        firstName.text = googleFirstName;
+        lastName.text = googleLastName;
+        signUpEmail.text = email;
+
+        setState(() {
+          isSignIn = false;
+        });
+
+        _snack("Complete your account");
+      }
+    } catch (e) {
+      _snack("Google sign-in failed: $e");
     }
   }
 
@@ -200,7 +376,6 @@ class _AuthScreenState extends State<AuthScreen> {
       ),
     );
   }
-  // ================= LEFT / RIGHT PANEL =================
 
   Widget _characterPanel() {
     return Container(
@@ -280,8 +455,6 @@ class _AuthScreenState extends State<AuthScreen> {
     );
   }
 
-  // ================= TABS =================
-
   Widget _tabs() {
     return Container(
       padding: const EdgeInsets.all(5),
@@ -338,28 +511,32 @@ class _AuthScreenState extends State<AuthScreen> {
     );
   }
 
-  // ================= SIGN IN =================
-
   Widget _signInForm() {
     return Column(
       key: const ValueKey("signin"),
       children: [
-        Align(
+        const Align(
           alignment: Alignment.centerLeft,
           child: Text(
             "Login to your account",
             style: TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.bold,
-              color: const Color.fromARGB(255, 255, 255, 255),
+              color: Color(0xff1565C0),
             ),
           ),
         ),
+
         const SizedBox(height: 20),
         _textField(
           controller: signInEmail,
           label: "Email",
           icon: Icons.email_outlined,
+          onChanged: (_) {
+            if (signInGeneralError != null) {
+              setState(() => signInGeneralError = null);
+            }
+          },
         ),
         const SizedBox(height: 14),
         _passwordField(
@@ -367,42 +544,97 @@ class _AuthScreenState extends State<AuthScreen> {
           label: "Password",
           hide: hidePassword,
           onToggle: () => setState(() => hidePassword = !hidePassword),
-        ),
-        const SizedBox(height: 14),
-        roleDropdown(),
-        const SizedBox(height: 20),
-        _primaryButton(
-          text: "Login",
-          onPressed: () {
-            _snack("Login API not added yet");
+          onChanged: (_) {
+            if (signInGeneralError != null) {
+              setState(() => signInGeneralError = null);
+            }
           },
         ),
+        if (signInGeneralError != null) ...[
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              signInGeneralError!,
+              style: const TextStyle(
+                color: Colors.red,
+                fontSize: 15,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+
+        const SizedBox(height: 20),
+        _primaryButton(text: "Login", onPressed: _handleLogin),
         const SizedBox(height: 8),
         TextButton(
-          onPressed: () {},
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const ForgotPasswordScreen(),
+              ),
+            );
+          },
           child: const Text(
             "Forgot password?",
-            style: TextStyle(color: Color(0xff1565C0)),
+            style: TextStyle(
+              color: Color(0xff1565C0),
+              fontWeight: FontWeight.w500,
+            ),
           ),
+        ),
+        const SizedBox(height: 10),
+        _dividerWithText("Or continue with"),
+        const SizedBox(height: 16),
+        _socialButton(
+          text: "Continue with Google",
+          leading: Image.asset(
+            'lib/assets/icons/google_logo.png',
+            height: 28,
+            width: 28,
+          ),
+          onPressed: _handleGoogleSignIn,
+        ),
+
+        const SizedBox(height: 18),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Text(
+              "Don’t have an account? ",
+              style: TextStyle(color: Colors.black54, fontSize: 15),
+            ),
+            GestureDetector(
+              onTap: () => setState(() => isSignIn = false),
+              child: const Text(
+                "Sign Up",
+                style: TextStyle(
+                  color: Color(0xff1565C0),
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
         ),
       ],
     );
   }
 
-  // ================= SIGN UP =================
-
   Widget _signUpForm() {
     return Column(
       key: const ValueKey("signup"),
       children: [
-        Align(
+        const Align(
           alignment: Alignment.centerLeft,
           child: Text(
             "Create your account",
             style: TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.bold,
-              color: const Color.fromARGB(255, 255, 255, 255),
+              color: Color(0xff1565C0),
             ),
           ),
         ),
@@ -431,6 +663,12 @@ class _AuthScreenState extends State<AuthScreen> {
           controller: signUpEmail,
           label: "Email",
           icon: Icons.email_outlined,
+          errorText: signUpEmailError,
+          onChanged: (_) {
+            if (signUpEmailError != null) {
+              setState(() => signUpEmailError = null);
+            }
+          },
         ),
         const SizedBox(height: 14),
         _passwordField(
@@ -438,6 +676,39 @@ class _AuthScreenState extends State<AuthScreen> {
           label: "Password",
           hide: hidePassword,
           onToggle: () => setState(() => hidePassword = !hidePassword),
+          errorText: signUpPasswordError,
+          onChanged: (_) => setState(() {
+            signUpPasswordError = null;
+          }),
+        ),
+        const SizedBox(height: 10),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _passwordRequirement(
+                "At least 8 characters",
+                _hasMinLength(signUpPassword.text),
+              ),
+              _passwordRequirement(
+                "At least one uppercase letter",
+                _hasUppercase(signUpPassword.text),
+              ),
+              _passwordRequirement(
+                "At least one lowercase letter",
+                _hasLowercase(signUpPassword.text),
+              ),
+              _passwordRequirement(
+                "At least one number",
+                _hasNumber(signUpPassword.text),
+              ),
+              _passwordRequirement(
+                "At least one special character",
+                _hasSpecialChar(signUpPassword.text),
+              ),
+            ],
+          ),
         ),
         const SizedBox(height: 14),
         _passwordField(
@@ -446,13 +717,29 @@ class _AuthScreenState extends State<AuthScreen> {
           hide: hideConfirmPassword,
           onToggle: () =>
               setState(() => hideConfirmPassword = !hideConfirmPassword),
+          errorText: confirmPasswordError,
+          onChanged: (_) {
+            if (confirmPasswordError != null) {
+              setState(() => confirmPasswordError = null);
+            }
+          },
         ),
         const SizedBox(height: 14),
-        _textField(
+        TextField(
           controller: dateOfBirth,
-          label: "Date of Birth (YYYY-MM-DD)",
-          icon: Icons.cake_outlined,
-          hint: "Example: 2008-05-12",
+          readOnly: true,
+          onTap: _pickDateOfBirth,
+          decoration:
+              _inputDecoration(
+                label: "Date of Birth",
+                icon: Icons.cake_outlined,
+                hint: "Select your birth date",
+              ).copyWith(
+                suffixIcon: IconButton(
+                  onPressed: _pickDateOfBirth,
+                  icon: const Icon(Icons.calendar_month_outlined),
+                ),
+              ),
         ),
         const SizedBox(height: 14),
         roleDropdown(),
@@ -465,8 +752,6 @@ class _AuthScreenState extends State<AuthScreen> {
     );
   }
 
-  // ================= ROLE DROPDOWN =================
-
   Widget roleDropdown() {
     return DropdownButtonFormField<String>(
       value: selectedRole,
@@ -478,7 +763,6 @@ class _AuthScreenState extends State<AuthScreen> {
         DropdownMenuItem(value: "doctor", child: Text("👨‍⚕️ Doctor")),
         DropdownMenuItem(value: "nutritionist", child: Text("🥗 Nutritionist")),
         DropdownMenuItem(value: "family", child: Text("👨‍👩‍👧 Family")),
-        // DropdownMenuItem(value: "psychologist", child: Text("🧠 Psychologist")),
       ],
       onChanged: (value) {
         if (value == null) return;
@@ -487,17 +771,27 @@ class _AuthScreenState extends State<AuthScreen> {
     );
   }
 
-  // ================= HELPERS =================
-
   Widget _textField({
     required TextEditingController controller,
     required String label,
     required IconData icon,
     String? hint,
+    String? errorText,
+    ValueChanged<String>? onChanged,
+    bool readOnly = false,
+    VoidCallback? onTap,
   }) {
     return TextField(
       controller: controller,
-      decoration: _inputDecoration(label: label, icon: icon, hint: hint),
+      readOnly: readOnly,
+      onTap: onTap,
+      onChanged: onChanged,
+      decoration: _inputDecoration(
+        label: label,
+        icon: icon,
+        hint: hint,
+        errorText: errorText,
+      ),
     );
   }
 
@@ -506,12 +800,19 @@ class _AuthScreenState extends State<AuthScreen> {
     required String label,
     required bool hide,
     required VoidCallback onToggle,
+    ValueChanged<String>? onChanged,
+    String? errorText,
   }) {
     return TextField(
       controller: controller,
       obscureText: hide,
-      decoration: _inputDecoration(label: label, icon: Icons.lock_outline)
-          .copyWith(
+      onChanged: onChanged,
+      decoration:
+          _inputDecoration(
+            label: label,
+            icon: Icons.lock_outline,
+            errorText: errorText,
+          ).copyWith(
             suffixIcon: IconButton(
               onPressed: onToggle,
               icon: Icon(
@@ -524,14 +825,73 @@ class _AuthScreenState extends State<AuthScreen> {
     );
   }
 
+  Widget _dividerWithText(String text) {
+    return Row(
+      children: [
+        const Expanded(child: Divider(color: Color(0xffC7DEF5), thickness: 1)),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Text(
+            text,
+            style: const TextStyle(
+              color: Colors.black54,
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+        const Expanded(child: Divider(color: Color(0xffC7DEF5), thickness: 1)),
+      ],
+    );
+  }
+
+  Widget _socialButton({
+    required String text,
+    required Widget leading,
+    required VoidCallback onPressed,
+  }) {
+    return SizedBox(
+      width: double.infinity,
+      height: 54,
+      child: OutlinedButton(
+        onPressed: onPressed,
+        style: OutlinedButton.styleFrom(
+          backgroundColor: Colors.white,
+          side: const BorderSide(color: Color(0xffBBDEFB), width: 1.2),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            leading,
+            const SizedBox(width: 10),
+            Text(
+              text,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: Color(0xff374151),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   InputDecoration _inputDecoration({
     required String label,
     required IconData icon,
     String? hint,
+    String? errorText,
   }) {
     return InputDecoration(
       labelText: label,
       hintText: hint,
+      errorText: errorText,
       prefixIcon: Icon(icon, color: const Color(0xff1565C0)),
       filled: true,
       fillColor: const Color(0xffF8FCFF),
@@ -548,6 +908,14 @@ class _AuthScreenState extends State<AuthScreen> {
         borderRadius: BorderRadius.circular(16),
         borderSide: const BorderSide(color: Color(0xff42A5F5), width: 1.6),
       ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: const BorderSide(color: Colors.red, width: 1.4),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: const BorderSide(color: Colors.red, width: 1.6),
+      ),
     );
   }
 
@@ -562,7 +930,6 @@ class _AuthScreenState extends State<AuthScreen> {
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xff42A5F5),
           foregroundColor: Colors.white,
-
           elevation: 0,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
@@ -573,6 +940,30 @@ class _AuthScreenState extends State<AuthScreen> {
           text,
           style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
         ),
+      ),
+    );
+  }
+
+  Widget _passwordRequirement(String text, bool isValid) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          Icon(
+            isValid ? Icons.check_circle : Icons.radio_button_unchecked,
+            size: 18,
+            color: isValid ? Colors.green : Colors.black38,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            text,
+            style: TextStyle(
+              fontSize: 13,
+              color: isValid ? Colors.green : Colors.black54,
+              fontWeight: isValid ? FontWeight.w600 : FontWeight.w400,
+            ),
+          ),
+        ],
       ),
     );
   }

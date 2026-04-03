@@ -1,3 +1,7 @@
+import 'dart:convert';
+import 'dart:io';
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'services/onboarding_api.dart';
 
@@ -13,6 +17,8 @@ class DoctorOnboardingScreen extends StatefulWidget {
 class _DoctorOnboardingScreenState extends State<DoctorOnboardingScreen> {
   int currentStep = 0;
   bool isSaving = false;
+  bool isUploadingProof = false;
+  bool isUploadingCv = false;
 
   // Step 1
   final fullNameController = TextEditingController();
@@ -36,13 +42,8 @@ class _DoctorOnboardingScreenState extends State<DoctorOnboardingScreen> {
   String professionalProofName = "";
   String cvFileName = "";
 
-  // Step 4
-  String patientConnectionMethod = "Invitation Code";
-
-  bool notifyHighGlucose = false;
-  bool notifyLowGlucose = false;
-  bool notifyMissedLogs = false;
-  bool notifyConsultRequests = false;
+  String professionalProofUrl = "";
+  String cvFileUrl = "";
 
   @override
   void dispose() {
@@ -54,12 +55,25 @@ class _DoctorOnboardingScreenState extends State<DoctorOnboardingScreen> {
     super.dispose();
   }
 
-  int get totalSteps => 4;
+  int get totalSteps => 3;
 
   void _showSnack(String message) {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  List<String> _extractNameParts(String value) {
+    return value
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((part) => part.trim().isNotEmpty)
+        .toList();
+  }
+
+  bool _isValidFullName(String value) {
+    final parts = _extractNameParts(value);
+    return parts.length >= 4;
   }
 
   Future<void> _nextStep() async {
@@ -87,6 +101,11 @@ class _DoctorOnboardingScreenState extends State<DoctorOnboardingScreen> {
         return false;
       }
 
+      if (!_isValidFullName(fullNameController.text)) {
+        _showSnack("Please enter your full name as 4 names or more");
+        return false;
+      }
+
       if (specialty == "Other" &&
           otherSpecialtyController.text.trim().isEmpty) {
         _showSnack("Please enter your specialty");
@@ -100,6 +119,11 @@ class _DoctorOnboardingScreenState extends State<DoctorOnboardingScreen> {
         return false;
       }
 
+      if (int.tryParse(yearsOfExperienceController.text.trim()) == null) {
+        _showSnack("Years of experience must be a valid number");
+        return false;
+      }
+
       if (!ageChildren && !ageAdolescents && !ageAdults && !ageAllAges) {
         _showSnack("Please select at least one age group");
         return false;
@@ -107,7 +131,7 @@ class _DoctorOnboardingScreenState extends State<DoctorOnboardingScreen> {
     }
 
     if (currentStep == 2) {
-      if (professionalProofName.isEmpty) {
+      if (professionalProofName.isEmpty || professionalProofUrl.isEmpty) {
         _showSnack("Please upload professional proof");
         return false;
       }
@@ -134,12 +158,9 @@ class _DoctorOnboardingScreenState extends State<DoctorOnboardingScreen> {
         ageAllAges: ageAllAges,
         treatsType1: treatsType1,
         professionalProofName: professionalProofName,
+        professionalProofUrl: professionalProofUrl,
         cvFileName: cvFileName,
-        patientConnectionMethod: patientConnectionMethod,
-        notifyHighGlucose: notifyHighGlucose,
-        notifyLowGlucose: notifyLowGlucose,
-        notifyMissedLogs: notifyMissedLogs,
-        notifyConsultRequests: notifyConsultRequests,
+        cvFileUrl: cvFileUrl,
       );
 
       _showSnack("Doctor profile saved successfully ✅");
@@ -152,16 +173,76 @@ class _DoctorOnboardingScreenState extends State<DoctorOnboardingScreen> {
     }
   }
 
-  void _mockPickProfessionalProof() {
-    setState(() {
-      professionalProofName = "doctor_professional_proof.pdf";
-    });
+  Future<void> _pickAndUploadProfessionalProof() async {
+    try {
+      setState(() => isUploadingProof = true);
+
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowMultiple: false,
+        withData: kIsWeb,
+        allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
+      );
+
+      if (result == null || result.files.isEmpty) return;
+
+      final picked = result.files.single;
+
+      final uploadResult = await OnboardingApi.uploadDoctorFile(
+        userId: widget.userId,
+        pickedFile: picked,
+        fileFieldName: "professionalProof",
+      );
+
+      setState(() {
+        professionalProofName = uploadResult["fileName"] ?? picked.name;
+        professionalProofUrl = uploadResult["fileUrl"] ?? "";
+      });
+
+      _showSnack("Professional proof uploaded successfully");
+    } catch (e) {
+      _showSnack(e.toString().replaceAll("Exception: ", ""));
+    } finally {
+      if (mounted) {
+        setState(() => isUploadingProof = false);
+      }
+    }
   }
 
-  void _mockPickCv() {
-    setState(() {
-      cvFileName = "doctor_cv.pdf";
-    });
+  Future<void> _pickAndUploadCv() async {
+    try {
+      setState(() => isUploadingCv = true);
+
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowMultiple: false,
+        withData: kIsWeb,
+        allowedExtensions: ['pdf', 'doc', 'docx'],
+      );
+
+      if (result == null || result.files.isEmpty) return;
+
+      final picked = result.files.single;
+
+      final uploadResult = await OnboardingApi.uploadDoctorFile(
+        userId: widget.userId,
+        pickedFile: picked,
+        fileFieldName: "cvFile",
+      );
+
+      setState(() {
+        cvFileName = uploadResult["fileName"] ?? picked.name;
+        cvFileUrl = uploadResult["fileUrl"] ?? "";
+      });
+
+      _showSnack("CV uploaded successfully");
+    } catch (e) {
+      _showSnack(e.toString().replaceAll("Exception: ", ""));
+    } finally {
+      if (mounted) {
+        setState(() => isUploadingCv = false);
+      }
+    }
   }
 
   String _stepTitle() {
@@ -172,8 +253,6 @@ class _DoctorOnboardingScreenState extends State<DoctorOnboardingScreen> {
         return "Professional Details";
       case 2:
         return "Professional Verification";
-      case 3:
-        return "App Preferences";
       default:
         return "";
     }
@@ -187,8 +266,6 @@ class _DoctorOnboardingScreenState extends State<DoctorOnboardingScreen> {
         return 'lib/assets/images/doctor3.png';
       case 2:
         return 'lib/assets/images/doctor2.png';
-      case 3:
-        return 'lib/assets/images/doctor4.png';
       default:
         return 'lib/assets/images/doctor1.png';
     }
@@ -202,8 +279,6 @@ class _DoctorOnboardingScreenState extends State<DoctorOnboardingScreen> {
         return _professionalDetailsStep();
       case 2:
         return _verificationStep();
-      case 3:
-        return _preferencesStep();
       default:
         return const SizedBox.shrink();
     }
@@ -429,10 +504,21 @@ class _DoctorOnboardingScreenState extends State<DoctorOnboardingScreen> {
   Widget _basicInfoStep() {
     return Column(
       children: [
-        _textField(
+        TextField(
           controller: fullNameController,
-          label: "Full Name",
-          icon: Icons.person_outline,
+          decoration: _inputDecoration(
+            label: "Full Name",
+            icon: Icons.person_outline,
+            hint: "Enter your full name (4 names or more)",
+          ),
+        ),
+        const SizedBox(height: 8),
+        const Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            "The full name must contain at least 4 names",
+            style: TextStyle(fontSize: 12, color: Colors.black54),
+          ),
         ),
         const SizedBox(height: 14),
         _textField(
@@ -556,73 +642,19 @@ class _DoctorOnboardingScreenState extends State<DoctorOnboardingScreen> {
           subtitle: professionalProofName.isEmpty
               ? "Degree, specialty certificate, or professional proof"
               : professionalProofName,
-          buttonText: "Upload File",
-          onTap: _mockPickProfessionalProof,
+          buttonText: isUploadingProof ? "Uploading..." : "Upload File",
+          onTap: isUploadingProof ? null : _pickAndUploadProfessionalProof,
         ),
         const SizedBox(height: 14),
         _uploadCard(
           title: "Upload CV (Optional)",
           subtitle: cvFileName.isEmpty ? "You can upload your CV" : cvFileName,
-          buttonText: "Upload CV",
-          onTap: _mockPickCv,
+          buttonText: isUploadingCv ? "Uploading..." : "Upload CV",
+          onTap: isUploadingCv ? null : _pickAndUploadCv,
         ),
         const SizedBox(height: 16),
         _infoBox(
-          "Your account will remain under review until verification is completed.",
-        ),
-      ],
-    );
-  }
-
-  Widget _preferencesStep() {
-    return Column(
-      children: [
-        DropdownButtonFormField<String>(
-          initialValue: patientConnectionMethod,
-          decoration: _inputDecoration(
-            label: "How should patients connect with you?",
-            icon: Icons.link_outlined,
-          ),
-          items: const [
-            DropdownMenuItem(
-              value: "Invitation Code",
-              child: Text("Invitation Code"),
-            ),
-            DropdownMenuItem(
-              value: "Email Request",
-              child: Text("Email Request"),
-            ),
-            DropdownMenuItem(
-              value: "Manual Approval",
-              child: Text("Manual Approval"),
-            ),
-          ],
-          onChanged: (value) {
-            if (value == null) return;
-            setState(() => patientConnectionMethod = value);
-          },
-        ),
-        const SizedBox(height: 18),
-        _sectionTitle("Notification Preferences"),
-        _checkTile(
-          title: "High glucose alerts",
-          value: notifyHighGlucose,
-          onChanged: (v) => setState(() => notifyHighGlucose = v),
-        ),
-        _checkTile(
-          title: "Low glucose alerts",
-          value: notifyLowGlucose,
-          onChanged: (v) => setState(() => notifyLowGlucose = v),
-        ),
-        _checkTile(
-          title: "Missed logging",
-          value: notifyMissedLogs,
-          onChanged: (v) => setState(() => notifyMissedLogs = v),
-        ),
-        _checkTile(
-          title: "Consultation requests",
-          value: notifyConsultRequests,
-          onChanged: (v) => setState(() => notifyConsultRequests = v),
+          "The selected file will be uploaded from your laptop and saved in the database.",
         ),
       ],
     );
@@ -661,7 +693,7 @@ class _DoctorOnboardingScreenState extends State<DoctorOnboardingScreen> {
     required String title,
     required String subtitle,
     required String buttonText,
-    required VoidCallback onTap,
+    required VoidCallback? onTap,
   }) {
     return Container(
       width: double.infinity,
@@ -711,19 +743,22 @@ class _DoctorOnboardingScreenState extends State<DoctorOnboardingScreen> {
     required TextEditingController controller,
     required String label,
     required IconData icon,
+    String? hint,
   }) {
     return TextField(
       controller: controller,
-      decoration: _inputDecoration(label: label, icon: icon),
+      decoration: _inputDecoration(label: label, icon: icon, hint: hint),
     );
   }
 
   InputDecoration _inputDecoration({
     required String label,
     required IconData icon,
+    String? hint,
   }) {
     return InputDecoration(
       labelText: label,
+      hintText: hint,
       prefixIcon: Icon(icon, color: const Color(0xff1565C0)),
       filled: true,
       fillColor: const Color(0xffF8FCFF),

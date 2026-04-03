@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 class OnboardingApi {
@@ -65,7 +67,7 @@ class OnboardingApi {
     final data = jsonDecode(res.body);
 
     if (res.statusCode == 200 || res.statusCode == 201) {
-      return data;
+      return Map<String, dynamic>.from(data);
     }
 
     throw Exception(data["message"] ?? "Failed to save patient profile");
@@ -89,7 +91,9 @@ class OnboardingApi {
     final data = jsonDecode(res.body);
 
     if (res.statusCode == 200) {
-      return data["patient"];
+      return data["patient"] == null
+          ? null
+          : Map<String, dynamic>.from(data["patient"]);
     }
 
     if (res.statusCode == 404) {
@@ -123,10 +127,55 @@ class OnboardingApi {
     final data = jsonDecode(res.body);
 
     if (res.statusCode == 200 || res.statusCode == 201) {
-      return data;
+      return Map<String, dynamic>.from(data);
     }
 
     throw Exception(data["message"] ?? "Failed to save parent profile");
+  }
+
+  static Future<Map<String, dynamic>> uploadDoctorFile({
+    required String userId,
+    required PlatformFile pickedFile,
+    required String fileFieldName,
+  }) async {
+    final uri = Uri.parse("$baseUrl/api/doctor/upload/$userId");
+    final request = http.MultipartRequest("POST", uri);
+
+    if (kIsWeb) {
+      if (pickedFile.bytes == null) {
+        throw Exception("Unable to read the selected file");
+      }
+
+      request.files.add(
+        http.MultipartFile.fromBytes(
+          fileFieldName,
+          pickedFile.bytes!,
+          filename: pickedFile.name,
+        ),
+      );
+    } else {
+      if (pickedFile.path == null) {
+        throw Exception("Unable to read the selected file path");
+      }
+
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          fileFieldName,
+          pickedFile.path!,
+          filename: pickedFile.name,
+        ),
+      );
+    }
+
+    final streamedResponse = await request.send();
+    final response = await http.Response.fromStream(streamedResponse);
+    final data = jsonDecode(response.body);
+
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      return Map<String, dynamic>.from(data);
+    }
+
+    throw Exception(data["message"] ?? "File upload failed");
   }
 
   static Future<Map<String, dynamic>> saveDoctorProfile({
@@ -143,12 +192,9 @@ class OnboardingApi {
     required bool ageAllAges,
     required String treatsType1,
     required String professionalProofName,
+    required String professionalProofUrl,
     required String cvFileName,
-    required String patientConnectionMethod,
-    required bool notifyHighGlucose,
-    required bool notifyLowGlucose,
-    required bool notifyMissedLogs,
-    required bool notifyConsultRequests,
+    required String cvFileUrl,
   }) async {
     final url = Uri.parse("$baseUrl/api/doctor/save-profile");
 
@@ -169,22 +215,64 @@ class OnboardingApi {
         "ageAllAges": ageAllAges,
         "treatsType1": treatsType1,
         "professionalProofName": professionalProofName,
+        "professionalProofUrl": professionalProofUrl,
         "cvFileName": cvFileName,
-        "patientConnectionMethod": patientConnectionMethod,
-        "notifyHighGlucose": notifyHighGlucose,
-        "notifyLowGlucose": notifyLowGlucose,
-        "notifyMissedLogs": notifyMissedLogs,
-        "notifyConsultRequests": notifyConsultRequests,
+        "cvFileUrl": cvFileUrl,
       }),
     );
 
     final data = jsonDecode(res.body);
 
     if (res.statusCode == 200 || res.statusCode == 201) {
-      return data;
+      return Map<String, dynamic>.from(data);
     }
 
     throw Exception(data["message"] ?? "Failed to save doctor profile");
+  }
+
+  static Future<Map<String, dynamic>> uploadNutritionistFile({
+    required String userId,
+    required PlatformFile pickedFile,
+    required String fileFieldName,
+  }) async {
+    final uri = Uri.parse("$baseUrl/api/nutritionist/upload/$userId");
+    final request = http.MultipartRequest("POST", uri);
+
+    if (kIsWeb) {
+      if (pickedFile.bytes == null) {
+        throw Exception("Unable to read the selected file");
+      }
+
+      request.files.add(
+        http.MultipartFile.fromBytes(
+          fileFieldName,
+          pickedFile.bytes!,
+          filename: pickedFile.name,
+        ),
+      );
+    } else {
+      if (pickedFile.path == null) {
+        throw Exception("Unable to read the selected file path");
+      }
+
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          fileFieldName,
+          pickedFile.path!,
+          filename: pickedFile.name,
+        ),
+      );
+    }
+
+    final streamedResponse = await request.send();
+    final response = await http.Response.fromStream(streamedResponse);
+    final data = jsonDecode(response.body);
+
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      return Map<String, dynamic>.from(data);
+    }
+
+    throw Exception(data["message"] ?? "File upload failed");
   }
 
   static Future<Map<String, dynamic>> saveNutritionistProfile({
@@ -203,12 +291,9 @@ class OnboardingApi {
     required String planningStyle,
     required String otherPlanningStyle,
     required String professionalProofName,
+    required String professionalProofUrl,
     required String cvFileName,
-    required String patientConnectionMethod,
-    required bool notifyAfterMealHighs,
-    required bool notifyNutritionRequests,
-    required bool notifyMealPlanFollowUp,
-    required bool notifyFoodAllergyAlerts,
+    required String cvFileUrl,
   }) async {
     final url = Uri.parse("$baseUrl/api/nutritionist/save-profile");
 
@@ -231,19 +316,16 @@ class OnboardingApi {
         "planningStyle": planningStyle,
         "otherPlanningStyle": otherPlanningStyle,
         "professionalProofName": professionalProofName,
+        "professionalProofUrl": professionalProofUrl,
         "cvFileName": cvFileName,
-        "patientConnectionMethod": patientConnectionMethod,
-        "notifyAfterMealHighs": notifyAfterMealHighs,
-        "notifyNutritionRequests": notifyNutritionRequests,
-        "notifyMealPlanFollowUp": notifyMealPlanFollowUp,
-        "notifyFoodAllergyAlerts": notifyFoodAllergyAlerts,
+        "cvFileUrl": cvFileUrl,
       }),
     );
 
     final data = jsonDecode(res.body);
 
     if (res.statusCode == 200 || res.statusCode == 201) {
-      return data;
+      return Map<String, dynamic>.from(data);
     }
 
     throw Exception(data["message"] ?? "Failed to save nutritionist profile");
