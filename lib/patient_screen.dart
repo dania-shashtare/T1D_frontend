@@ -1,7 +1,14 @@
 import 'package:flutter/material.dart';
+import 'barcode_scanner_screen.dart';
+import 'barcode_product_result_screen.dart';
+import 'food_product.dart';
+import 'services/openfoodfacts_service.dart';
+import 'services/onboarding_api.dart';
 
 class PatientHomeScreen extends StatefulWidget {
-  const PatientHomeScreen({super.key});
+  final String userId;
+
+  const PatientHomeScreen({super.key, required this.userId});
 
   @override
   State<PatientHomeScreen> createState() => _PatientHomeScreenState();
@@ -21,9 +28,19 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
       "icon": Icons.free_breakfast_rounded,
     },
     {
+      "title": "Morning Snack",
+      "status": "Not added yet",
+      "icon": Icons.cookie_rounded,
+    },
+    {
       "title": "Lunch",
       "status": "Not added yet",
       "icon": Icons.lunch_dining_rounded,
+    },
+    {
+      "title": "Afternoon Snack",
+      "status": "Not added yet",
+      "icon": Icons.icecream_rounded,
     },
     {
       "title": "Dinner",
@@ -36,18 +53,20 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xffEAF6FF),
+      bottomNavigationBar: SafeArea(
+        minimum: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        child: _buildBottomNav(),
+      ),
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
           child: Column(
             children: [
               _buildHeader(),
               const SizedBox(height: 14),
               _buildGlucoseCard(),
               const SizedBox(height: 14),
-              _buildMealsCard(),
-              const SizedBox(height: 14),
-              _buildBottomNav(),
+              Expanded(child: _buildMealsCard()),
             ],
           ),
         ),
@@ -73,10 +92,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
               SizedBox(height: 4),
               Text(
                 "Today’s overview",
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Color(0xff5E87A8),
-                ),
+                style: TextStyle(fontSize: 14, color: Color(0xff5E87A8)),
               ),
             ],
           ),
@@ -111,10 +127,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
               children: [
                 const Text(
                   "Current Glucose",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                  ),
+                  style: TextStyle(color: Colors.white, fontSize: 14),
                 ),
                 const SizedBox(height: 8),
                 Row(
@@ -133,10 +146,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                       padding: EdgeInsets.only(bottom: 5),
                       child: Text(
                         "mg/dL",
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.white,
-                        ),
+                        style: TextStyle(fontSize: 14, color: Colors.white),
                       ),
                     ),
                   ],
@@ -144,10 +154,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                 const SizedBox(height: 8),
                 Text(
                   "$glucoseStatus • Last: $lastReading",
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: Colors.white,
-                  ),
+                  style: const TextStyle(fontSize: 13, color: Colors.white),
                 ),
               ],
             ),
@@ -176,51 +183,46 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
   }
 
   Widget _buildMealsCard() {
-    return Expanded(
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(24),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              "Meals",
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: Color(0xff17466E),
-              ),
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            "Meals",
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: Color(0xff17466E),
             ),
-            const SizedBox(height: 4),
-            const Text(
-              "Choose a meal to continue",
-              style: TextStyle(
-                fontSize: 13,
-                color: Color(0xff6D93B1),
-              ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            "Choose a meal to continue",
+            style: TextStyle(fontSize: 13, color: Color(0xff6D93B1)),
+          ),
+          const SizedBox(height: 12),
+          Expanded(
+            child: ListView.separated(
+              itemCount: meals.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 10),
+              itemBuilder: (context, index) {
+                final meal = meals[index];
+                return _mealTile(
+                  title: meal["title"] as String,
+                  status: meal["status"] as String,
+                  icon: meal["icon"] as IconData,
+                  onTap: () => _showMealOptions(meal["title"] as String),
+                );
+              },
             ),
-            const SizedBox(height: 12),
-            Expanded(
-              child: Column(
-                children: meals.map((meal) {
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: _mealTile(
-                      title: meal["title"] as String,
-                      status: meal["status"] as String,
-                      icon: meal["icon"] as IconData,
-                      onTap: () => _showMealOptions(meal["title"] as String),
-                    ),
-                  );
-                }).toList(),
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -281,8 +283,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                       color: selected
                           ? const Color(0xff2F7DB7)
                           : const Color(0xff7A9AB5),
-                      fontWeight:
-                          selected ? FontWeight.w700 : FontWeight.w500,
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                     ),
                   ),
                 ],
@@ -302,7 +303,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
         color: Colors.white,
         shape: BoxShape.circle,
       ),
-      child: Icon(icon, color: Color(0xff4D7FA8)),
+      child: Icon(icon, color: const Color(0xff4D7FA8)),
     );
   }
 
@@ -371,60 +372,124 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
+      isScrollControlled: true,
       builder: (_) {
-        return Container(
-          padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 42,
-                height: 5,
-                decoration: BoxDecoration(
-                  color: const Color(0xffC8DDEC),
-                  borderRadius: BorderRadius.circular(10),
+        return SafeArea(
+          top: false,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 42,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: const Color(0xffC8DDEC),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                mealTitle,
-                style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xff17466E),
+                const SizedBox(height: 16),
+                Text(
+                  mealTitle,
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xff17466E),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 6),
-              const Text(
-                "Choose how you want to continue",
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Color(0xff7A9AB5),
+                const SizedBox(height: 6),
+                const Text(
+                  "Choose how you want to continue",
+                  style: TextStyle(fontSize: 14, color: Color(0xff7A9AB5)),
                 ),
-              ),
-              const SizedBox(height: 18),
-              _optionTile(
-                icon: Icons.edit_note_rounded,
-                title: "Add My Meal",
-                subtitle: "Enter your meal and calculate carbs",
-              ),
-              const SizedBox(height: 10),
-              _optionTile(
-                icon: Icons.qr_code_scanner_rounded,
-                title: "Scan Barcode",
-                subtitle: "Scan packaged food",
-              ),
-              const SizedBox(height: 10),
-              _optionTile(
-                icon: Icons.lightbulb_outline_rounded,
-                title: "Suggest a Meal",
-                subtitle: "Get meal ideas if you're not sure",
-              ),
-            ],
+                const SizedBox(height: 18),
+                _optionTile(
+                  icon: Icons.edit_note_rounded,
+                  title: "Add My Meal",
+                  subtitle: "Enter your meal and calculate carbs",
+                  onTap: () => Navigator.pop(context),
+                ),
+                const SizedBox(height: 10),
+                _optionTile(
+                  icon: Icons.qr_code_scanner_rounded,
+                  title: "Scan Barcode",
+                  subtitle: "Scan packaged food",
+                  onTap: () async {
+                    Navigator.pop(context);
+
+                    final barcode = await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const BarcodeScannerScreen(),
+                      ),
+                    );
+
+                    if (barcode == null || barcode.toString().isEmpty) return;
+
+                    showDialog(
+                      context: context,
+                      barrierDismissible: false,
+                      builder: (_) =>
+                          const Center(child: CircularProgressIndicator()),
+                    );
+
+                    final FoodProduct? product =
+                        await OpenFoodFactsService.getProductByBarcode(barcode);
+
+                    if (mounted) Navigator.pop(context);
+
+                    if (!mounted) return;
+
+                    if (product == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text("Product not found")),
+                      );
+                      return;
+                    }
+
+                    final patientProfile =
+                        await OnboardingApi.getPatientProfile(
+                          userId: widget.userId,
+                        );
+
+                    final double? carbRatio =
+                        patientProfile != null &&
+                            patientProfile['carbRatio'] != null &&
+                            patientProfile['carbRatio']
+                                .toString()
+                                .trim()
+                                .isNotEmpty
+                        ? double.tryParse(
+                            patientProfile['carbRatio'].toString(),
+                          )
+                        : null;
+
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => BarcodeProductResultScreen(
+                          mealTitle: mealTitle,
+                          product: product,
+                          carbRatio: carbRatio,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 10),
+                _optionTile(
+                  icon: Icons.lightbulb_outline_rounded,
+                  title: "Suggest a Meal",
+                  subtitle: "Get meal ideas if you're not sure",
+                  onTap: () => Navigator.pop(context),
+                ),
+              ],
+            ),
           ),
         );
       },
@@ -435,46 +500,79 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
+      isScrollControlled: true,
       builder: (_) {
-        return Container(
-          padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 42,
-                height: 5,
-                decoration: BoxDecoration(
-                  color: const Color(0xffC8DDEC),
-                  borderRadius: BorderRadius.circular(10),
+        return SafeArea(
+          top: false,
+          child: DraggableScrollableSheet(
+            initialChildSize: 0.72,
+            minChildSize: 0.45,
+            maxChildSize: 0.95,
+            expand: false,
+            builder: (context, scrollController) {
+              return Container(
+                padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
                 ),
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                "Menu",
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xff17466E),
+                child: Column(
+                  children: [
+                    Container(
+                      width: 42,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: const Color(0xffC8DDEC),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      "Menu",
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xff17466E),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Expanded(
+                      child: ListView(
+                        controller: scrollController,
+                        children: [
+                          _menuOptionTile(
+                            Icons.medical_information_outlined,
+                            "Doctor",
+                          ),
+                          const SizedBox(height: 10),
+                          _menuOptionTile(
+                            Icons.contact_support_outlined,
+                            "Contact",
+                          ),
+                          const SizedBox(height: 10),
+                          _menuOptionTile(
+                            Icons.chat_bubble_outline_rounded,
+                            "Chat / Ask Anything",
+                          ),
+                          const SizedBox(height: 10),
+                          _menuOptionTile(
+                            Icons.no_meals_rounded,
+                            "Nutritionist",
+                          ),
+                          const SizedBox(height: 10),
+                          _menuOptionTile(Icons.water_drop_outlined, "Water"),
+                          const SizedBox(height: 10),
+                          _menuOptionTile(
+                            Icons.insert_chart_outlined_rounded,
+                            "Reports",
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 16),
-              _menuOptionTile(Icons.directions_walk_rounded, "Activity"),
-              const SizedBox(height: 10),
-              _menuOptionTile(Icons.water_drop_outlined, "Water"),
-              const SizedBox(height: 10),
-              _menuOptionTile(Icons.insert_chart_outlined_rounded, "Reports"),
-              const SizedBox(height: 10),
-              _menuOptionTile(Icons.medical_information_outlined, "Doctor"),
-              const SizedBox(height: 10),
-              _menuOptionTile(Icons.family_restroom_outlined, "Family"),
-              const SizedBox(height: 10),
-              _menuOptionTile(Icons.settings_outlined, "Settings"),
-            ],
+              );
+            },
           ),
         );
       },
@@ -485,9 +583,10 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     required IconData icon,
     required String title,
     required String subtitle,
+    required VoidCallback onTap,
   }) {
     return InkWell(
-      onTap: () => Navigator.pop(context),
+      onTap: onTap,
       borderRadius: BorderRadius.circular(18),
       child: Ink(
         padding: const EdgeInsets.all(14),

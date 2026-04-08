@@ -73,6 +73,29 @@ class OnboardingApi {
     throw Exception(data["message"] ?? "Failed to save patient profile");
   }
 
+  static Future<Map<String, dynamic>?> getPatientProfile({
+    required String userId,
+  }) async {
+    final url = Uri.parse("$baseUrl/api/patient/$userId");
+
+    final res = await http.get(
+      url,
+      headers: {"Content-Type": "application/json"},
+    );
+
+    final data = jsonDecode(res.body);
+
+    if (res.statusCode == 200) {
+      return Map<String, dynamic>.from(data);
+    }
+
+    if (res.statusCode == 404) {
+      return null;
+    }
+
+    throw Exception(data["message"] ?? "Failed to get patient profile");
+  }
+
   static Future<Map<String, dynamic>?> findPatientByEmail({
     required String email,
     required DateTime birthDate,

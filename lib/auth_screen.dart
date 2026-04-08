@@ -252,11 +252,14 @@ class _AuthScreenState extends State<AuthScreen> {
     }
 
     try {
-      await AuthApi.login(email: email, password: password);
+      final loginData = await AuthApi.login(email: email, password: password);
 
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => const PatientHomeScreen()),
+        MaterialPageRoute(
+          builder: (context) =>
+              PatientHomeScreen(userId: loginData['user']['_id']),
+        ),
       );
     } catch (e) {
       setState(() {
@@ -305,10 +308,13 @@ class _AuthScreenState extends State<AuthScreen> {
 
       if (result['exists'] == true) {
         _snack("Welcome back ${user.displayName ?? ''}");
-
+        debugPrint(result.toString());
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => const PatientHomeScreen()),
+          MaterialPageRoute(
+            builder: (context) =>
+                PatientHomeScreen(userId: result['user']['_id']),
+          ),
         );
         // هون لاحقًا:
         // Navigator.pushReplacement(... home page ...)
