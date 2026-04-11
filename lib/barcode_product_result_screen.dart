@@ -70,71 +70,145 @@ class _BarcodeProductResultScreenState
               Container(
                 padding: const EdgeInsets.all(18),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: const Color(0xff2B6CB0),
                   borderRadius: BorderRadius.circular(26),
                 ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      width: 170,
-                      height: 170,
-                      decoration: BoxDecoration(
-                        color: const Color(0xffF5FAFE),
-                        borderRadius: BorderRadius.circular(24),
-                      ),
-                      child: product.imageUrl != null
-                          ? ClipRRect(
-                              borderRadius: BorderRadius.circular(24),
-                              child: Image.network(
-                                product.imageUrl!,
-                                fit: BoxFit.contain,
-                                errorBuilder: (_, __, ___) => const Icon(
-                                  Icons.fastfood_rounded,
-                                  size: 70,
-                                  color: Color(0xff2F7DB7),
-                                ),
-                              ),
-                            )
-                          : const Icon(
-                              Icons.fastfood_rounded,
-                              size: 70,
-                              color: Color(0xff2F7DB7),
-                            ),
-                    ),
-                    const SizedBox(width: 18),
-                    Expanded(
-                      child: Column(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final isSmallScreen = constraints.maxWidth < 700;
+
+                    if (isSmallScreen) {
+                      return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          Center(
+                            child: Container(
+                              width: double.infinity,
+                              height: 200,
+                              decoration: BoxDecoration(
+                                color: const Color(0xff1F5E9D),
+                                borderRadius: BorderRadius.circular(24),
+                              ),
+                              child: product.imageUrl != null
+                                  ? ClipRRect(
+                                      borderRadius: BorderRadius.circular(24),
+                                      child: Image.network(
+                                        product.imageUrl!,
+                                        fit: BoxFit.contain,
+                                        errorBuilder: (_, __, ___) =>
+                                            const Icon(
+                                          Icons.fastfood_rounded,
+                                          size: 70,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    )
+                                  : const Icon(
+                                      Icons.fastfood_rounded,
+                                      size: 70,
+                                      color: Colors.white,
+                                    ),
+                            ),
+                          ),
+                          const SizedBox(height: 18),
                           Text(
                             product.name,
                             style: const TextStyle(
                               fontSize: 24,
                               fontWeight: FontWeight.w800,
-                              color: Color(0xff17466E),
+                              color: Colors.white,
                             ),
                           ),
                           const SizedBox(height: 16),
                           _simpleInfoRow(
                             "Carbs / 100g",
                             "${product.carbsPer100g.toStringAsFixed(1)} g",
+                            isDark: true,
                           ),
                           if (product.carbsPerServing != null)
                             _simpleInfoRow(
                               "Carbs / serving",
                               "${product.carbsPerServing!.toStringAsFixed(1)} g",
+                              isDark: true,
                             ),
                           if (product.servingSize != null &&
                               product.servingSize!.isNotEmpty)
                             _simpleInfoRow(
                               "Serving size",
                               product.servingSize!,
+                              isDark: true,
                             ),
                         ],
-                      ),
-                    ),
-                  ],
+                      );
+                    }
+
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 170,
+                          height: 170,
+                          decoration: BoxDecoration(
+                            color: const Color(0xff1F5E9D),
+                            borderRadius: BorderRadius.circular(24),
+                          ),
+                          child: product.imageUrl != null
+                              ? ClipRRect(
+                                  borderRadius: BorderRadius.circular(24),
+                                  child: Image.network(
+                                    product.imageUrl!,
+                                    fit: BoxFit.contain,
+                                    errorBuilder: (_, __, ___) => const Icon(
+                                      Icons.fastfood_rounded,
+                                      size: 70,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                )
+                              : const Icon(
+                                  Icons.fastfood_rounded,
+                                  size: 70,
+                                  color: Colors.white,
+                                ),
+                        ),
+                        const SizedBox(width: 18),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                product.name,
+                                style: const TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              _simpleInfoRow(
+                                "Carbs / 100g",
+                                "${product.carbsPer100g.toStringAsFixed(1)} g",
+                                isDark: true,
+                              ),
+                              if (product.carbsPerServing != null)
+                                _simpleInfoRow(
+                                  "Carbs / serving",
+                                  "${product.carbsPerServing!.toStringAsFixed(1)} g",
+                                  isDark: true,
+                                ),
+                              if (product.servingSize != null &&
+                                  product.servingSize!.isNotEmpty)
+                                _simpleInfoRow(
+                                  "Serving size",
+                                  product.servingSize!,
+                                  isDark: true,
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
+                  },
                 ),
               ),
               const SizedBox(height: 14),
@@ -158,7 +232,10 @@ class _BarcodeProductResultScreenState
                     const SizedBox(height: 6),
                     const Text(
                       "Enter grams, then press calculate",
-                      style: TextStyle(fontSize: 14, color: Color(0xff7A9AB5)),
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Color(0xff7A9AB5),
+                      ),
                     ),
                     const SizedBox(height: 14),
                     TextField(
@@ -203,7 +280,7 @@ class _BarcodeProductResultScreenState
                       child: ElevatedButton(
                         onPressed: calculateValues,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xff7EC8FF),
+                          backgroundColor: const Color(0xff2B6CB0),
                           foregroundColor: Colors.white,
                           elevation: 0,
                           padding: const EdgeInsets.symmetric(vertical: 17),
@@ -235,14 +312,16 @@ class _BarcodeProductResultScreenState
                               Expanded(
                                 child: _resultBox(
                                   title: "Grams",
-                                  value: "${enteredGrams.toStringAsFixed(0)} g",
+                                  value:
+                                      "${enteredGrams.toStringAsFixed(0)} g",
                                 ),
                               ),
                               const SizedBox(width: 12),
                               Expanded(
                                 child: _resultBox(
                                   title: "Carbs",
-                                  value: "${totalCarbs.toStringAsFixed(1)} g",
+                                  value:
+                                      "${totalCarbs.toStringAsFixed(1)} g",
                                 ),
                               ),
                             ],
@@ -276,27 +355,35 @@ class _BarcodeProductResultScreenState
     );
   }
 
-  Widget _simpleInfoRow(String label, String value) {
+  Widget _simpleInfoRow(String label, String value, {bool isDark = false}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 15,
-              color: Color(0xff7A9AB5),
-              fontWeight: FontWeight.w600,
+          Expanded(
+            flex: 3,
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 15,
+                color:
+                    isDark ? const Color(0xffCFE4FF) : const Color(0xff7A9AB5),
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
           const SizedBox(width: 12),
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w800,
-              color: Color(0xff17466E),
+          Expanded(
+            flex: 2,
+            child: Text(
+              value,
+              textAlign: TextAlign.start,
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+                color: isDark ? Colors.white : const Color(0xff17466E),
+              ),
             ),
           ),
         ],
