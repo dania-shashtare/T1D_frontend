@@ -5,6 +5,12 @@ import 'barcode_product_result_screen.dart';
 import 'food_product.dart';
 import 'services/openfoodfacts_service.dart';
 import 'services/onboarding_api.dart';
+import 'MealSuggestionScreen.dart';
+import 'profile_page.dart';
+import 'chat.dart';
+import 'meal_logger.dart';
+import 'meals_report.dart';
+import 'water_tracker_page.dart';
 
 class PatientHomeScreen extends StatefulWidget {
   final String userId;
@@ -153,7 +159,15 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
         ),
         _circleIcon(Icons.notifications_none_rounded),
         const SizedBox(width: 10),
-        _circleIcon(Icons.person_outline_rounded),
+        GestureDetector(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const ProfilePage()),
+            );
+          },
+          child: _circleIcon(Icons.person_outline_rounded),
+        ),
       ],
     );
   }
@@ -477,6 +491,17 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                 _showMainMenu();
                 return;
               }
+
+              if (item['label'] == 'Meals') {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const MealReportApp(),
+                  ),
+                );
+                return;
+              }
+
               setState(() => selectedNavIndex = index);
             },
             child: AnimatedContainer(
@@ -590,6 +615,23 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     );
   }
 
+  String _mealTypeFromTitle(String mealTitle) {
+    switch (mealTitle) {
+      case 'Breakfast':
+        return 'breakfast';
+      case 'Morning Snack':
+        return 'morningSnack';
+      case 'Lunch':
+        return 'lunch';
+      case 'Afternoon Snack':
+        return 'eveningSnack';
+      case 'Dinner':
+        return 'dinner';
+      default:
+        return 'breakfast';
+    }
+  }
+
   void _showMealOptions(String mealTitle) {
     showModalBottomSheet(
       context: context,
@@ -626,7 +668,19 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                 icon: Icons.edit_note_rounded,
                 title: 'Add my meal',
                 subtitle: 'Enter your meal and calculate carbs',
-                onTap: () => Navigator.pop(context),
+                onTap: () {
+                  final mealType = _mealTypeFromTitle(mealTitle);
+
+                  Navigator.pop(context);
+
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) =>
+                          MealLoggerScreen(mealType: mealType),
+                    ),
+                  );
+                },
               ),
               const SizedBox(height: 10),
               _sheetOption(
@@ -684,7 +738,19 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                 icon: Icons.lightbulb_outline_rounded,
                 title: 'Suggest a meal',
                 subtitle: "Get meal ideas if you're not sure",
-                onTap: () => Navigator.pop(context),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+
+                    MaterialPageRoute(
+                      builder: (context) => MealSuggestionScreen(
+                        mealType: mealTitle,
+                        userId: widget.userId,
+                      ),
+                    ),
+                  );
+                },
               ),
             ],
           ),
@@ -744,7 +810,27 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                     itemBuilder: (_, i) => _menuTile(
                       icon: menuItems[i]['icon'] as IconData,
                       label: menuItems[i]['label'] as String,
-                      onTap: () => Navigator.pop(context),
+                      onTap: () {
+                        Navigator.pop(context);
+
+                        if (menuItems[i]['label'] == 'Chat / Ask anything') {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const ChatScreen(),
+                            ),
+                          );
+                        }
+                        if (menuItems[i]['label'] == 'Water') {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const WaterTrackerPage(),
+                            ),
+                          );
+                          return;
+                        }
+                      },
                     ),
                   ),
                 ),

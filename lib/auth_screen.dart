@@ -8,6 +8,8 @@ import 'patient_onboarding_screen.dart';
 import 'parent_onboarding_screen.dart';
 import 'doctor_onboarding_screen.dart';
 import 'nutritionist_onboarding_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../services/session_service.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -236,37 +238,41 @@ class _AuthScreenState extends State<AuthScreen> {
     }
   }
 
-  Future<void> _handleLogin() async {
-    final email = signInEmail.text.trim();
-    final password = signInPassword.text;
+Future<void> _handleLogin() async {
+  final email = signInEmail.text.trim();
+  final password = signInPassword.text;
 
+  setState(() {
+    signInGeneralError = null;
+  });
+
+  if (email.isEmpty || password.isEmpty) {
     setState(() {
-      signInGeneralError = null;
+      signInGeneralError = "Please enter your email and password";
     });
-
-    if (email.isEmpty || password.isEmpty) {
-      setState(() {
-        signInGeneralError = "Please enter your email and password";
-      });
-      return;
-    }
-
-    try {
-      final loginData = await AuthApi.login(email: email, password: password);
-
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (context) =>
-              PatientHomeScreen(userId: loginData['user']['_id']),
-        ),
-      );
-    } catch (e) {
-      setState(() {
-        signInGeneralError = "Invalid email or password";
-      });
-    }
+    return;
   }
+
+  try {
+    final loginData = await AuthApi.login(email: email, password: password);
+
+    final String userId = loginData['user']['_id'];
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('userId', userId);
+   await prefs.setString('role', loginData['user']['role']);
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (context) => PatientHomeScreen(userId: userId),
+      ),
+    );
+  } catch (e) {
+    setState(() {
+      signInGeneralError = "Invalid email or password";
+    });
+  }
+}
 
   Future<void> _handleGoogleSignIn() async {
     try {
