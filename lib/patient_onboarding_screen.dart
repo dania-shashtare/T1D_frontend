@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'services/onboarding_api.dart';
+import 'patient_screen.dart';
 
 class PatientOnboardingScreen extends StatefulWidget {
   final String userId;
@@ -23,19 +24,14 @@ class PatientOnboardingScreen extends StatefulWidget {
 }
 
 class _PatientOnboardingScreenState extends State<PatientOnboardingScreen> {
-  int currentStep = 0;
-
-  // ---------------- Guardian ----------------
   final guardianNameController = TextEditingController();
   final guardianPhoneController = TextEditingController();
   String guardianRelation = "Mother";
 
-  // ---------------- Patient Info ----------------
   final heightController = TextEditingController();
   final weightController = TextEditingController();
   final diagnosisDateController = TextEditingController();
 
-  // ---------------- Treatment ----------------
   bool usesRapidInsulin = false;
   bool usesBasalInsulin = false;
   bool usesMixedInsulin = false;
@@ -45,8 +41,7 @@ class _PatientOnboardingScreenState extends State<PatientOnboardingScreen> {
 
   final otherTreatmentNameController = TextEditingController();
 
-  // ---------------- Management ----------------
-  String managementType = "Carb Counting";
+  String? managementType;
 
   final breakfastDoseController = TextEditingController();
   final lunchDoseController = TextEditingController();
@@ -55,9 +50,10 @@ class _PatientOnboardingScreenState extends State<PatientOnboardingScreen> {
   final correctionFactorController = TextEditingController();
   final carbRatioController = TextEditingController();
 
-  // ---------------- Allergy ----------------
   bool hasFoodAllergy = false;
   final allergyDetailsController = TextEditingController();
+
+  bool isSubmitting = false;
 
   bool get isChild {
     final age = _calculateAge(widget.birthDate);
@@ -74,26 +70,20 @@ class _PatientOnboardingScreenState extends State<PatientOnboardingScreen> {
     return age;
   }
 
-  int get totalSteps => isChild ? 6 : 5;
-
   @override
   void dispose() {
     guardianNameController.dispose();
     guardianPhoneController.dispose();
-
     heightController.dispose();
     weightController.dispose();
     diagnosisDateController.dispose();
-
     otherTreatmentNameController.dispose();
-
     breakfastDoseController.dispose();
     lunchDoseController.dispose();
     dinnerDoseController.dispose();
     lantusDoseController.dispose();
     correctionFactorController.dispose();
     carbRatioController.dispose();
-
     allergyDetailsController.dispose();
     super.dispose();
   }
@@ -133,44 +123,8 @@ class _PatientOnboardingScreenState extends State<PatientOnboardingScreen> {
     }
   }
 
-  Future<void> _nextStep() async {
-    if (!_validateStep()) return;
-
-    if (currentStep == totalSteps - 1) {
-      await _submitData();
-      return;
-    }
-
-    final managementTypeStep = isChild ? 3 : 2;
-    final managementDetailsStep = isChild ? 4 : 3;
-
-    setState(() {
-      if (currentStep == managementTypeStep &&
-          managementType == "I Don't Know") {
-        currentStep = managementDetailsStep + 1;
-      } else {
-        currentStep++;
-      }
-    });
-  }
-
-  void _previousStep() {
-    if (currentStep <= 0) return;
-
-    final managementTypeStep = isChild ? 3 : 2;
-    final allergyStep = isChild ? 5 : 4;
-
-    setState(() {
-      if (currentStep == allergyStep && managementType == "I Don't Know") {
-        currentStep = managementTypeStep;
-      } else {
-        currentStep--;
-      }
-    });
-  }
-
-  bool _validateStep() {
-    if (isChild && currentStep == 0) {
+  bool _validateForm() {
+    if (isChild) {
       if (guardianNameController.text.trim().isEmpty ||
           guardianPhoneController.text.trim().isEmpty) {
         _showSnack("Please fill guardian information");
@@ -178,70 +132,67 @@ class _PatientOnboardingScreenState extends State<PatientOnboardingScreen> {
       }
     }
 
-    final patientInfoStep = isChild ? 1 : 0;
-    if (currentStep == patientInfoStep) {
-      if (heightController.text.trim().isEmpty ||
-          weightController.text.trim().isEmpty ||
-          diagnosisDateController.text.trim().isEmpty) {
-        _showSnack("Please complete patient information");
+    if (heightController.text.trim().isEmpty ||
+        weightController.text.trim().isEmpty ||
+        diagnosisDateController.text.trim().isEmpty) {
+      _showSnack("Please complete patient information");
+      return false;
+    }
+
+    if (!usesRapidInsulin &&
+        !usesBasalInsulin &&
+        !usesMixedInsulin &&
+        !usesPump &&
+        !usesPills &&
+        !usesOtherTreatment) {
+      _showSnack("Please select at least one treatment type");
+      return false;
+    }
+
+    if (usesOtherTreatment &&
+        otherTreatmentNameController.text.trim().isEmpty) {
+      _showSnack("Please enter the other treatment name");
+      return false;
+    }
+
+    if (managementType == null || managementType!.trim().isEmpty) {
+      _showSnack("Please choose how you manage diabetes");
+      return false;
+    }
+
+    if (managementType == "Fixed Doses") {
+      if (breakfastDoseController.text.trim().isEmpty ||
+          lunchDoseController.text.trim().isEmpty ||
+          dinnerDoseController.text.trim().isEmpty ||
+          lantusDoseController.text.trim().isEmpty ||
+          correctionFactorController.text.trim().isEmpty) {
+        _showSnack("Please complete the fixed dose details");
         return false;
       }
     }
 
-    final treatmentStep = isChild ? 2 : 1;
-    if (currentStep == treatmentStep) {
-      if (!usesRapidInsulin &&
-          !usesBasalInsulin &&
-          !usesMixedInsulin &&
-          !usesPump &&
-          !usesPills &&
-          !usesOtherTreatment) {
-        _showSnack("Please select at least one treatment type");
-        return false;
-      }
-
-      if (usesOtherTreatment &&
-          otherTreatmentNameController.text.trim().isEmpty) {
-        _showSnack("Please enter the other treatment name");
+    if (managementType == "Carb Counting") {
+      if (carbRatioController.text.trim().isEmpty ||
+          lantusDoseController.text.trim().isEmpty ||
+          correctionFactorController.text.trim().isEmpty) {
+        _showSnack("Please complete the carb counting details");
         return false;
       }
     }
 
-    final managementDetailsStep = isChild ? 4 : 3;
-    if (currentStep == managementDetailsStep) {
-      if (managementType == "Fixed Doses") {
-        if (breakfastDoseController.text.trim().isEmpty ||
-            lunchDoseController.text.trim().isEmpty ||
-            dinnerDoseController.text.trim().isEmpty ||
-            lantusDoseController.text.trim().isEmpty ||
-            correctionFactorController.text.trim().isEmpty) {
-          _showSnack("Please complete the fixed dose details");
-          return false;
-        }
-      }
-
-      if (managementType == "Carb Counting") {
-        if (carbRatioController.text.trim().isEmpty ||
-            lantusDoseController.text.trim().isEmpty ||
-            correctionFactorController.text.trim().isEmpty) {
-          _showSnack("Please complete the carb counting details");
-          return false;
-        }
-      }
-    }
-
-    final allergyStep = totalSteps - 1;
-    if (currentStep == allergyStep && hasFoodAllergy) {
-      if (allergyDetailsController.text.trim().isEmpty) {
-        _showSnack("Please enter allergy details");
-        return false;
-      }
+    if (hasFoodAllergy && allergyDetailsController.text.trim().isEmpty) {
+      _showSnack("Please enter allergy details");
+      return false;
     }
 
     return true;
   }
 
   Future<void> _submitData() async {
+    if (!_validateForm()) return;
+
+    setState(() => isSubmitting = true);
+
     try {
       final diagnosisDate = DateTime.parse(diagnosisDateController.text.trim());
 
@@ -281,7 +232,7 @@ class _PatientOnboardingScreenState extends State<PatientOnboardingScreen> {
         usesPills: usesPills,
         usesOtherTreatment: usesOtherTreatment,
         otherTreatmentName: otherTreatmentNameController.text.trim(),
-        managementType: managementType,
+        managementType: managementType ?? "",
         breakfastDose: breakfastDose,
         lunchDose: lunchDose,
         dinnerDose: dinnerDose,
@@ -295,117 +246,18 @@ class _PatientOnboardingScreenState extends State<PatientOnboardingScreen> {
       _showSnack("Patient profile saved successfully ✅");
 
       if (!mounted) return;
-
-      // Navigator.pushReplacement(...);
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(
+          builder: (_) => PatientHomeScreen(userId: widget.userId),
+        ),
+        (route) => false,
+      );
     } catch (e) {
       _showSnack(e.toString().replaceAll("Exception: ", ""));
-    }
-  }
-
-  Widget _buildCurrentStep() {
-    if (isChild) {
-      switch (currentStep) {
-        case 0:
-          return _guardianStep();
-        case 1:
-          return _patientInfoStep();
-        case 2:
-          return _treatmentStep();
-        case 3:
-          return _managementTypeStep();
-        case 4:
-          return _managementDetailsStep();
-        case 5:
-          return _allergyStep();
-        default:
-          return const SizedBox.shrink();
-      }
-    } else {
-      switch (currentStep) {
-        case 0:
-          return _patientInfoStep();
-        case 1:
-          return _treatmentStep();
-        case 2:
-          return _managementTypeStep();
-        case 3:
-          return _managementDetailsStep();
-        case 4:
-          return _allergyStep();
-        default:
-          return const SizedBox.shrink();
-      }
-    }
-  }
-
-  String _stepTitle() {
-    if (isChild) {
-      switch (currentStep) {
-        case 0:
-          return "Guardian Information";
-        case 1:
-          return "Patient Information";
-        case 2:
-          return "Treatment & Medications";
-        case 3:
-          return "Diabetes Management";
-        case 4:
-          return "Management Details";
-        case 5:
-          return "Food Allergy";
-        default:
-          return "";
-      }
-    } else {
-      switch (currentStep) {
-        case 0:
-          return "Patient Information";
-        case 1:
-          return "Treatment & Medications";
-        case 2:
-          return "Diabetes Management";
-        case 3:
-          return "Management Details";
-        case 4:
-          return "Food Allergy";
-        default:
-          return "";
-      }
-    }
-  }
-
-  String _stepImagePath() {
-    if (isChild) {
-      switch (currentStep) {
-        case 0:
-          return 'lib/assets/images/step_guardian.png';
-        case 1:
-          return 'lib/assets/images/step_patient.png';
-        case 2:
-          return 'lib/assets/images/step_insulin.png';
-        case 3:
-          return 'lib/assets/images/step_management.png';
-        case 4:
-          return 'lib/assets/images/step_management.png';
-        case 5:
-          return 'lib/assets/images/step_allergy.png';
-        default:
-          return 'lib/assets/images/step_patient.png';
-      }
-    } else {
-      switch (currentStep) {
-        case 0:
-          return 'lib/assets/images/step_patient.png';
-        case 1:
-          return 'lib/assets/images/step_insulin.png';
-        case 2:
-          return 'lib/assets/images/step_management.png';
-        case 3:
-          return 'lib/assets/images/step_management.png';
-        case 4:
-          return 'lib/assets/images/step_allergy.png';
-        default:
-          return 'lib/assets/images/step_patient.png';
+    } finally {
+      if (mounted) {
+        setState(() => isSubmitting = false);
       }
     }
   }
@@ -452,7 +304,7 @@ class _PatientOnboardingScreenState extends State<PatientOnboardingScreen> {
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.all(24),
                     child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 900),
+                      constraints: const BoxConstraints(maxWidth: 980),
                       child: Container(
                         padding: const EdgeInsets.all(28),
                         decoration: BoxDecoration(
@@ -466,35 +318,7 @@ class _PatientOnboardingScreenState extends State<PatientOnboardingScreen> {
                             ),
                           ],
                         ),
-                        child: LayoutBuilder(
-                          builder: (context, constraints) {
-                            final isWide = constraints.maxWidth >= 760;
-
-                            return isWide
-                                ? Row(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Expanded(
-                                        flex: 3,
-                                        child: _sideCharacterPanel(),
-                                      ),
-                                      const SizedBox(width: 28),
-                                      Expanded(
-                                        flex: 5,
-                                        child: _mainFormPanel(),
-                                      ),
-                                    ],
-                                  )
-                                : Column(
-                                    children: [
-                                      _topCharacterPanel(),
-                                      const SizedBox(height: 20),
-                                      _mainFormPanel(),
-                                    ],
-                                  );
-                          },
-                        ),
+                        child: _mainFormPanel(),
                       ),
                     ),
                   ),
@@ -507,81 +331,13 @@ class _PatientOnboardingScreenState extends State<PatientOnboardingScreen> {
     );
   }
 
-  Widget _sideCharacterPanel() {
-    return Column(
-      children: [
-        Container(
-          height: 220,
-          width: double.infinity,
-          decoration: BoxDecoration(
-            color: const Color(0xffF3FAFF),
-            borderRadius: BorderRadius.circular(22),
-          ),
-          child: Center(
-            child: Image.asset(
-              _stepImagePath(),
-              fit: BoxFit.contain,
-              errorBuilder: (_, __, ___) => const Icon(
-                Icons.image_outlined,
-                size: 90,
-                color: Color(0xff90CAF9),
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-        Text(
-          _stepTitle(),
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
-            color: Color(0xff1565C0),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          "Step ${currentStep + 1} of $totalSteps",
-          textAlign: TextAlign.center,
-          style: const TextStyle(fontSize: 15, color: Colors.black54),
-        ),
-      ],
-    );
-  }
-
-  Widget _topCharacterPanel() {
-    return Column(
-      children: [
-        Container(
-          height: 140,
-          width: double.infinity,
-          decoration: BoxDecoration(
-            color: const Color(0xffF3FAFF),
-            borderRadius: BorderRadius.circular(22),
-          ),
-          child: Center(
-            child: Image.asset(
-              _stepImagePath(),
-              fit: BoxFit.contain,
-              errorBuilder: (_, __, ___) => const Icon(
-                Icons.image_outlined,
-                size: 70,
-                color: Color(0xff90CAF9),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
   Widget _mainFormPanel() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          _stepTitle(),
-          style: const TextStyle(
+        const Text(
+          "Complete Your Information",
+          style: TextStyle(
             fontSize: 26,
             fontWeight: FontWeight.bold,
             color: Color(0xff1565C0),
@@ -589,56 +345,217 @@ class _PatientOnboardingScreenState extends State<PatientOnboardingScreen> {
         ),
         const SizedBox(height: 8),
         Text(
-          "Step ${currentStep + 1} of $totalSteps",
+          isChild
+              ? "Child profile with guardian details"
+              : "Patient profile form",
           style: const TextStyle(fontSize: 15, color: Colors.black54),
         ),
         const SizedBox(height: 24),
-        _buildCurrentStep(),
+
+        if (isChild) ...[
+          _sectionBlock(
+            title: "Guardian Information",
+            imagePath: 'lib/assets/images/step_guardian.png',
+            child: _guardianSection(),
+          ),
+          const SizedBox(height: 24),
+        ],
+
+        _sectionBlock(
+          title: "Patient Information",
+          imagePath: 'lib/assets/images/step_patient.png',
+          child: _patientInfoSection(),
+        ),
+        const SizedBox(height: 24),
+
+        _sectionBlock(
+          title: "Treatment & Medications",
+          imagePath: 'lib/assets/images/step_insulin.png',
+          child: _treatmentSection(),
+        ),
+        const SizedBox(height: 24),
+
+        _sectionBlock(
+          title: "Diabetes Management",
+          imagePath: 'lib/assets/images/step_management.png',
+          child: _managementTypeSection(),
+        ),
+        const SizedBox(height: 24),
+
+        if (managementType != null && managementType != "I Don't Know") ...[
+          _simpleSectionBlock(
+            title: "Management Details",
+            child: _managementDetailsSection(),
+          ),
+          const SizedBox(height: 24),
+        ],
+
+        _sectionBlock(
+          title: "Food Allergy",
+          imagePath: 'lib/assets/images/step_allergy.png',
+          child: _allergySection(),
+        ),
         const SizedBox(height: 28),
-        Row(
-          children: [
-            if (currentStep > 0)
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: _previousStep,
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(54),
-                    side: const BorderSide(color: Color(0xff8E8E8E)),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                  child: const Text("Previous", style: TextStyle(fontSize: 17)),
-                ),
-              ),
-            if (currentStep > 0) const SizedBox(width: 12),
-            Expanded(
-              child: ElevatedButton(
-                onPressed: _nextStep,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xff42A5F5),
-                  foregroundColor: Colors.white,
-                  minimumSize: const Size.fromHeight(54),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                ),
-                child: Text(
-                  currentStep == totalSteps - 1 ? "Finish" : "Next",
-                  style: const TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
+
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: isSubmitting ? null : _submitData,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xff42A5F5),
+              foregroundColor: Colors.white,
+              minimumSize: const Size.fromHeight(56),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
               ),
             ),
-          ],
+            child: isSubmitting
+                ? const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Text(
+                    "Submit",
+                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+                  ),
+          ),
         ),
       ],
     );
   }
 
-  Widget _guardianStep() {
+  Widget _sectionBlock({
+    required String title,
+    required String imagePath,
+    required Widget child,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xffF9FCFF),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xffD7EBFF)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isWide = constraints.maxWidth >= 640;
+
+              if (isWide) {
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 120,
+                      height: 120,
+                      decoration: BoxDecoration(
+                        color: const Color(0xffF3FAFF),
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: Center(
+                        child: Image.asset(
+                          imagePath,
+                          fit: BoxFit.contain,
+                          errorBuilder: (_, __, ___) => const Icon(
+                            Icons.image_outlined,
+                            size: 54,
+                            color: Color(0xff90CAF9),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 18),
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xff1565C0),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              }
+
+              return Column(
+                children: [
+                  Container(
+                    height: 120,
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: const Color(0xffF3FAFF),
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: Center(
+                      child: Image.asset(
+                        imagePath,
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, __, ___) => const Icon(
+                          Icons.image_outlined,
+                          size: 54,
+                          color: Color(0xff90CAF9),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    title,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xff1565C0),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 18),
+          child,
+        ],
+      ),
+    );
+  }
+
+  Widget _simpleSectionBlock({required String title, required Widget child}) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xffF9FCFF),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xffD7EBFF)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              color: Color(0xff1565C0),
+            ),
+          ),
+          const SizedBox(height: 18),
+          child,
+        ],
+      ),
+    );
+  }
+
+  Widget _guardianSection() {
     return Column(
       children: [
         _textField(
@@ -675,7 +592,7 @@ class _PatientOnboardingScreenState extends State<PatientOnboardingScreen> {
     );
   }
 
-  Widget _patientInfoStep() {
+  Widget _patientInfoSection() {
     return Column(
       children: [
         _textField(
@@ -710,7 +627,7 @@ class _PatientOnboardingScreenState extends State<PatientOnboardingScreen> {
     );
   }
 
-  Widget _treatmentStep() {
+  Widget _treatmentSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -784,36 +701,37 @@ class _PatientOnboardingScreenState extends State<PatientOnboardingScreen> {
     );
   }
 
-  Widget _managementTypeStep() {
-    return Column(
-      children: [
-        DropdownButtonFormField<String>(
-          value: managementType,
-          decoration: _inputDecoration(
-            label: "How do you manage diabetes?",
-            icon: Icons.settings_accessibility_outlined,
-          ),
-          items: const [
-            DropdownMenuItem(
-              value: "Carb Counting",
-              child: Text("Carb Counting"),
-            ),
-            DropdownMenuItem(value: "Fixed Doses", child: Text("Fixed Doses")),
-            DropdownMenuItem(
-              value: "I Don't Know",
-              child: Text("I Don't Know"),
-            ),
-          ],
-          onChanged: (value) {
-            if (value == null) return;
-            setState(() => managementType = value);
-          },
+  Widget _managementTypeSection() {
+    return DropdownButtonFormField<String>(
+      value: managementType,
+      decoration: _inputDecoration(
+        label: "How do you manage diabetes?",
+        icon: Icons.settings_accessibility_outlined,
+      ),
+      hint: const Text("Select one option"),
+      items: const [
+        DropdownMenuItem<String>(
+          value: "Carb Counting",
+          child: Text("Carb Counting"),
+        ),
+        DropdownMenuItem<String>(
+          value: "Fixed Doses",
+          child: Text("Fixed Doses"),
+        ),
+        DropdownMenuItem<String>(
+          value: "I Don't Know",
+          child: Text("I Don't Know"),
         ),
       ],
+      onChanged: (value) {
+        setState(() {
+          managementType = value;
+        });
+      },
     );
   }
 
-  Widget _managementDetailsStep() {
+  Widget _managementDetailsSection() {
     if (managementType == "Fixed Doses") {
       return Column(
         children: [
@@ -877,7 +795,7 @@ class _PatientOnboardingScreenState extends State<PatientOnboardingScreen> {
     return const SizedBox.shrink();
   }
 
-  Widget _allergyStep() {
+  Widget _allergySection() {
     return Column(
       children: [
         SwitchListTile(
@@ -907,12 +825,15 @@ class _PatientOnboardingScreenState extends State<PatientOnboardingScreen> {
     required bool selected,
     required VoidCallback onTap,
   }) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final cardWidth = screenWidth < 500 ? 130.0 : 148.0;
+
     return InkWell(
       borderRadius: BorderRadius.circular(18),
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
-        width: 148,
+        width: cardWidth,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
         decoration: BoxDecoration(
           color: selected ? const Color(0xffE3F2FD) : Colors.white,

@@ -2,6 +2,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'services/onboarding_api.dart';
+import 'patient_screen.dart';
 
 class NutritionistOnboardingScreen extends StatefulWidget {
   final String userId;
@@ -15,12 +16,10 @@ class NutritionistOnboardingScreen extends StatefulWidget {
 
 class _NutritionistOnboardingScreenState
     extends State<NutritionistOnboardingScreen> {
-  int currentStep = 0;
   bool isSaving = false;
   bool isUploadingProof = false;
   bool isUploadingCv = false;
 
-  // Step 1
   final fullNameController = TextEditingController();
   final phoneController = TextEditingController();
   final workplaceController = TextEditingController();
@@ -28,7 +27,6 @@ class _NutritionistOnboardingScreenState
   String specialty = "Clinical Nutrition";
   final otherSpecialtyController = TextEditingController();
 
-  // Step 2
   final yearsOfExperienceController = TextEditingController();
 
   bool ageChildren = false;
@@ -40,7 +38,6 @@ class _NutritionistOnboardingScreenState
   String planningStyle = "Carb Counting";
   final otherPlanningStyleController = TextEditingController();
 
-  // Step 3
   String professionalProofName = "";
   String cvFileName = "";
 
@@ -57,8 +54,6 @@ class _NutritionistOnboardingScreenState
     otherPlanningStyleController.dispose();
     super.dispose();
   }
-
-  int get totalSteps => 3;
 
   void _showSnack(String message) {
     ScaffoldMessenger.of(
@@ -79,77 +74,56 @@ class _NutritionistOnboardingScreenState
     return parts.length >= 4;
   }
 
-  Future<void> _nextStep() async {
-    if (!_validateStep()) return;
-
-    if (currentStep < totalSteps - 1) {
-      setState(() => currentStep++);
-    } else {
-      await _submitNutritionistData();
-    }
-  }
-
-  void _previousStep() {
-    if (currentStep > 0) {
-      setState(() => currentStep--);
-    }
-  }
-
-  bool _validateStep() {
-    if (currentStep == 0) {
-      if (fullNameController.text.trim().isEmpty ||
-          phoneController.text.trim().isEmpty ||
-          workplaceController.text.trim().isEmpty) {
-        _showSnack("Please complete the basic information");
-        return false;
-      }
-
-      if (!_isValidFullName(fullNameController.text)) {
-        _showSnack("Please enter your full name as 4 names or more");
-        return false;
-      }
-
-      if (specialty == "Other" &&
-          otherSpecialtyController.text.trim().isEmpty) {
-        _showSnack("Please enter your specialty");
-        return false;
-      }
+  bool _validateForm() {
+    if (fullNameController.text.trim().isEmpty ||
+        phoneController.text.trim().isEmpty ||
+        workplaceController.text.trim().isEmpty) {
+      _showSnack("Please complete the basic information");
+      return false;
     }
 
-    if (currentStep == 1) {
-      if (yearsOfExperienceController.text.trim().isEmpty) {
-        _showSnack("Please enter years of experience");
-        return false;
-      }
-
-      if (int.tryParse(yearsOfExperienceController.text.trim()) == null) {
-        _showSnack("Years of experience must be a valid number");
-        return false;
-      }
-
-      if (!ageChildren && !ageAdolescents && !ageAdults && !ageAllAges) {
-        _showSnack("Please select at least one age group");
-        return false;
-      }
-
-      if (planningStyle == "Other" &&
-          otherPlanningStyleController.text.trim().isEmpty) {
-        _showSnack("Please enter your nutrition planning approach");
-        return false;
-      }
+    if (!_isValidFullName(fullNameController.text)) {
+      _showSnack("Please enter your full name as 4 names or more");
+      return false;
     }
 
-    if (currentStep == 2) {
-      if (professionalProofName.isEmpty || professionalProofUrl.isEmpty) {
-        _showSnack("Please upload professional proof");
-        return false;
-      }
+    if (specialty == "Other" && otherSpecialtyController.text.trim().isEmpty) {
+      _showSnack("Please enter your specialty");
+      return false;
+    }
+
+    if (yearsOfExperienceController.text.trim().isEmpty) {
+      _showSnack("Please enter years of experience");
+      return false;
+    }
+
+    if (int.tryParse(yearsOfExperienceController.text.trim()) == null) {
+      _showSnack("Years of experience must be a valid number");
+      return false;
+    }
+
+    if (!ageChildren && !ageAdolescents && !ageAdults && !ageAllAges) {
+      _showSnack("Please select at least one age group");
+      return false;
+    }
+
+    if (planningStyle == "Other" &&
+        otherPlanningStyleController.text.trim().isEmpty) {
+      _showSnack("Please enter your nutrition planning approach");
+      return false;
+    }
+
+    if (professionalProofName.isEmpty || professionalProofUrl.isEmpty) {
+      _showSnack("Please upload professional proof");
+      return false;
     }
 
     return true;
   }
 
   Future<void> _submitNutritionistData() async {
+    if (!_validateForm()) return;
+
     try {
       setState(() => isSaving = true);
 
@@ -175,6 +149,16 @@ class _NutritionistOnboardingScreenState
       );
 
       _showSnack("Nutritionist profile saved successfully ✅");
+
+      if (!mounted) return;
+
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(
+          builder: (_) => PatientHomeScreen(userId: widget.userId),
+        ),
+        (route) => false,
+      );
     } catch (e) {
       _showSnack(e.toString().replaceAll("Exception: ", ""));
     } finally {
@@ -256,47 +240,10 @@ class _NutritionistOnboardingScreenState
     }
   }
 
-  String _stepTitle() {
-    switch (currentStep) {
-      case 0:
-        return "Basic Professional Information";
-      case 1:
-        return "Professional Details";
-      case 2:
-        return "Professional Verification";
-      default:
-        return "";
-    }
-  }
-
-  String _stepImagePath() {
-    switch (currentStep) {
-      case 0:
-        return 'lib/assets/images/food1.png';
-      case 1:
-        return 'lib/assets/images/food2.png';
-      case 2:
-        return 'lib/assets/images/food3.png';
-      default:
-        return 'lib/assets/images/food1.png';
-    }
-  }
-
-  Widget _buildCurrentStep() {
-    switch (currentStep) {
-      case 0:
-        return _basicInfoStep();
-      case 1:
-        return _professionalDetailsStep();
-      case 2:
-        return _verificationStep();
-      default:
-        return const SizedBox.shrink();
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
+    final isBusy = isSaving || isUploadingProof || isUploadingCv;
+
     return Scaffold(
       body: Container(
         width: double.infinity,
@@ -337,7 +284,7 @@ class _NutritionistOnboardingScreenState
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.all(24),
                     child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 920),
+                      constraints: const BoxConstraints(maxWidth: 980),
                       child: Container(
                         padding: const EdgeInsets.all(28),
                         decoration: BoxDecoration(
@@ -351,29 +298,7 @@ class _NutritionistOnboardingScreenState
                             ),
                           ],
                         ),
-                        child: LayoutBuilder(
-                          builder: (context, constraints) {
-                            final isWide = constraints.maxWidth >= 760;
-
-                            return isWide
-                                ? Row(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Expanded(flex: 3, child: _sidePanel()),
-                                      const SizedBox(width: 28),
-                                      Expanded(flex: 5, child: _mainPanel()),
-                                    ],
-                                  )
-                                : Column(
-                                    children: [
-                                      _topPanel(),
-                                      const SizedBox(height: 20),
-                                      _mainPanel(),
-                                    ],
-                                  );
-                          },
-                        ),
+                        child: _mainFormPanel(isBusy),
                       ),
                     ),
                   ),
@@ -386,133 +311,169 @@ class _NutritionistOnboardingScreenState
     );
   }
 
-  Widget _sidePanel() {
-    return Column(
-      children: [
-        Container(
-          height: 220,
-          width: double.infinity,
-          decoration: BoxDecoration(
-            color: const Color(0xffF3FAFF),
-            borderRadius: BorderRadius.circular(22),
-          ),
-          child: Center(
-            child: Image.asset(
-              _stepImagePath(),
-              fit: BoxFit.contain,
-              errorBuilder: (context, error, stackTrace) => const Icon(
-                Icons.restaurant_menu_outlined,
-                size: 80,
-                color: Color(0xff90CAF9),
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-        Text(
-          _stepTitle(),
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
-            color: Color(0xff1565C0),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          "Step ${currentStep + 1} of $totalSteps",
-          textAlign: TextAlign.center,
-          style: const TextStyle(fontSize: 15, color: Colors.black54),
-        ),
-      ],
-    );
-  }
-
-  Widget _topPanel() {
-    return Container(
-      height: 140,
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: const Color(0xffF3FAFF),
-        borderRadius: BorderRadius.circular(22),
-      ),
-      child: Center(
-        child: Image.asset(
-          _stepImagePath(),
-          fit: BoxFit.contain,
-          errorBuilder: (context, error, stackTrace) => const Icon(
-            Icons.restaurant_menu_outlined,
-            size: 70,
-            color: Color(0xff90CAF9),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _mainPanel() {
+  Widget _mainFormPanel(bool isBusy) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          _stepTitle(),
-          style: const TextStyle(
+        const Text(
+          "Complete Nutritionist Information",
+          style: TextStyle(
             fontSize: 26,
             fontWeight: FontWeight.bold,
             color: Color(0xff1565C0),
           ),
         ),
         const SizedBox(height: 8),
-        Text(
-          "Step ${currentStep + 1} of $totalSteps",
-          style: const TextStyle(fontSize: 15, color: Colors.black54),
+        const Text(
+          "Please complete your professional details below.",
+          style: TextStyle(fontSize: 15, color: Colors.black54),
         ),
         const SizedBox(height: 24),
-        _buildCurrentStep(),
+
+        _sectionBlock(
+          title: "Basic Professional Information",
+          imagePath: 'lib/assets/images/food1.png',
+          child: _basicInfoSection(),
+        ),
+        const SizedBox(height: 24),
+
+        _sectionBlock(
+          title: "Professional Details",
+          imagePath: 'lib/assets/images/food2.png',
+          child: _professionalDetailsSection(),
+        ),
+        const SizedBox(height: 24),
+
+        _sectionBlock(
+          title: "Professional Verification",
+          imagePath: 'lib/assets/images/food3.png',
+          child: _verificationSection(),
+        ),
         const SizedBox(height: 28),
-        Row(
-          children: [
-            if (currentStep > 0)
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: isSaving ? null : _previousStep,
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(54),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                  child: const Text("Previous"),
-                ),
-              ),
-            if (currentStep > 0) const SizedBox(width: 12),
-            Expanded(
-              child: ElevatedButton(
-                onPressed: isSaving ? null : _nextStep,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xff42A5F5),
-                  foregroundColor: Colors.white,
-                  minimumSize: const Size.fromHeight(54),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                ),
-                child: Text(
-                  isSaving
-                      ? "Saving..."
-                      : currentStep == totalSteps - 1
-                      ? "Finish"
-                      : "Next",
-                ),
+
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: isBusy ? null : _submitNutritionistData,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xff42A5F5),
+              foregroundColor: Colors.white,
+              minimumSize: const Size.fromHeight(56),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
               ),
             ),
-          ],
+            child: Text(
+              isSaving ? "Saving..." : "Submit",
+              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+            ),
+          ),
         ),
       ],
     );
   }
 
-  Widget _basicInfoStep() {
+  Widget _sectionBlock({
+    required String title,
+    required String imagePath,
+    required Widget child,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xffF9FCFF),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xffD7EBFF)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isWide = constraints.maxWidth >= 640;
+
+              if (isWide) {
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 120,
+                      height: 120,
+                      decoration: BoxDecoration(
+                        color: const Color(0xffF3FAFF),
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: Center(
+                        child: Image.asset(
+                          imagePath,
+                          fit: BoxFit.contain,
+                          errorBuilder: (_, __, ___) => const Icon(
+                            Icons.restaurant_menu_outlined,
+                            size: 54,
+                            color: Color(0xff90CAF9),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 18),
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xff1565C0),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              }
+
+              return Column(
+                children: [
+                  Container(
+                    height: 120,
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: const Color(0xffF3FAFF),
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: Center(
+                      child: Image.asset(
+                        imagePath,
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, __, ___) => const Icon(
+                          Icons.restaurant_menu_outlined,
+                          size: 54,
+                          color: Color(0xff90CAF9),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    title,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xff1565C0),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 18),
+          child,
+        ],
+      ),
+    );
+  }
+
+  Widget _basicInfoSection() {
     return Column(
       children: [
         TextField(
@@ -545,7 +506,8 @@ class _NutritionistOnboardingScreenState
         ),
         const SizedBox(height: 14),
         DropdownButtonFormField<String>(
-          initialValue: specialty,
+          value: specialty,
+          isExpanded: true,
           decoration: _inputDecoration(
             label: "Specialty",
             icon: Icons.badge_outlined,
@@ -590,7 +552,7 @@ class _NutritionistOnboardingScreenState
     );
   }
 
-  Widget _professionalDetailsStep() {
+  Widget _professionalDetailsSection() {
     return Column(
       children: [
         _textField(
@@ -622,7 +584,8 @@ class _NutritionistOnboardingScreenState
         ),
         const SizedBox(height: 18),
         DropdownButtonFormField<String>(
-          initialValue: hasType1Experience,
+          value: hasType1Experience,
+          isExpanded: true,
           decoration: _inputDecoration(
             label: "Do you have experience with Type 1 Diabetes patients?",
             icon: Icons.monitor_heart_outlined,
@@ -638,7 +601,8 @@ class _NutritionistOnboardingScreenState
         ),
         const SizedBox(height: 18),
         DropdownButtonFormField<String>(
-          initialValue: planningStyle,
+          value: planningStyle,
+          isExpanded: true,
           decoration: _inputDecoration(
             label: "How do you usually build meal plans?",
             icon: Icons.restaurant_menu_outlined,
@@ -679,7 +643,7 @@ class _NutritionistOnboardingScreenState
     );
   }
 
-  Widget _verificationStep() {
+  Widget _verificationSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
