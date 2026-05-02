@@ -1,10 +1,21 @@
-import 'package:flutter/material.dart';
+import 'dart:math' as math;
+
 import 'package:fl_chart/fl_chart.dart';
-import 'barcode_scanner_screen.dart';
+import 'package:flutter/material.dart';
+import 'services/glucose_api.dart';
+
 import 'barcode_product_result_screen.dart';
+import 'barcode_scanner_screen.dart';
 import 'food_product.dart';
-import 'services/openfoodfacts_service.dart';
+import 'low_glucose_screen.dart';
 import 'services/onboarding_api.dart';
+import 'services/openfoodfacts_service.dart';
+
+import 'notifications_screen.dart';
+import 'high_glucose_screen.dart';
+import 'reports_screen.dart';
+
+import 'activity_screen.dart';
 import 'MealSuggestionScreen.dart';
 import 'profile_page.dart';
 import 'chat.dart';
@@ -21,23 +32,28 @@ class PatientHomeScreen extends StatefulWidget {
   State<PatientHomeScreen> createState() => _PatientHomeScreenState();
 }
 
-class _PatientHomeScreenState extends State<PatientHomeScreen> {
-  double currentGlucose = 118;
-  String glucoseStatus = 'In Range';
-  String lastReading = 'just now';
+class _PatientHomeScreenState extends State<PatientHomeScreen>
+    with SingleTickerProviderStateMixin {
+  double? currentGlucose;
+  String glucoseStatus = 'No readings yet';
+  String lastReading = '';
   Color statusColor = const Color(0xff1D9E75);
 
   int selectedNavIndex = 0;
 
-  final List<FlSpot> glucoseSpots = [
-    const FlSpot(0, 105),
-    const FlSpot(1, 130),
-    const FlSpot(2, 118),
-    const FlSpot(3, 142),
-    const FlSpot(4, 118),
-  ];
+  final TextEditingController _glucoseController = TextEditingController();
+  List<GlucoseReading> readings = [];
+  double? patientCorrectionFactor;
+  final double patientTargetGlucose = 120;
 
-  final List<String> glucoseLabels = ['8:00', '9:30', '11:00', '12:30', 'Now'];
+  late final AnimationController _mascotController;
+
+  static const int _baseChartPage = 5000;
+  final PageController _chartDayController = PageController(
+    initialPage: _baseChartPage,
+  );
+
+  DateTime selectedChartDay = DateTime.now();
 
   final List<Map<String, dynamic>> meals = [
     {
@@ -67,11 +83,31 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     },
   ];
 
-  final TextEditingController _glucoseController = TextEditingController();
+  static const Color _softBlue = Color(0xffEEF7FF);
+  static const Color _softBlue2 = Color(0xffDCEEFF);
+  static const Color _mainBlue = Color(0xff185FA5);
+  static const Color _textBlue = Color(0xff0C447C);
+
+  @override
+  void initState() {
+    super.initState();
+
+    selectedChartDay = _dateOnly(DateTime.now());
+
+    _mascotController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1700),
+    )..repeat(reverse: true);
+
+    _loadPatientProfile();
+    _loadReadings();
+  }
 
   @override
   void dispose() {
     _glucoseController.dispose();
+    _mascotController.dispose();
+    _chartDayController.dispose();
     super.dispose();
   }
 
@@ -88,22 +124,619 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     return 'In Range';
   }
 
-  void _addReading() {
-    final val = double.tryParse(_glucoseController.text);
-    if (val == null || val < 40 || val > 400) return;
-    setState(() {
-      final nextX = glucoseSpots.length.toDouble();
-      glucoseSpots.add(FlSpot(nextX, val));
-      final now = TimeOfDay.now();
-      glucoseLabels.add(
-        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}',
+  String _displayGlucoseValue(double? value) {
+    if (value == null) return '--';
+    if (value < 40) return 'LO';
+    if (value > 400) return 'HI';
+    return value.toStringAsFixed(0);
+  }
+
+  String _displayReadingValue(double value) {
+    if (value < 40) return 'LO';
+    if (value > 400) return 'HI';
+    return value.toStringAsFixed(0);
+  }
+
+  String _formatTime(DateTime dateTime) {
+    final hour = dateTime.hour % 12 == 0 ? 12 : dateTime.hour % 12;
+    final minute = dateTime.minute.toString().padLeft(2, '0');
+    final period = dateTime.hour >= 12 ? 'PM' : 'AM';
+    return '$hour:$minute $period';
+  }
+
+  String _formatRelative(DateTime dateTime) {
+    final now = DateTime.now();
+    final diff = now.difference(dateTime);
+
+    if (diff.inMinutes < 1) return 'just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes} min ago';
+    if (diff.inHours < 24) return '${diff.inHours} h ago';
+    return _formatTime(dateTime);
+  }
+
+  String _getMascotPath() {
+    if (currentGlucose == null) {
+      return 'lib/assets/images/sugerhappy.png';
+    }
+    if (currentGlucose! < 70) {
+      return 'lib/assets/images/low_mascot.png';
+    }
+    if (currentGlucose! > 180) {
+      return 'lib/assets/images/mascot_high.png';
+    }
+    return 'lib/assets/images/sugerhappy.png';
+  }
+
+  DateTime _dateOnly(DateTime d) {
+    return DateTime(d.year, d.month, d.day);
+  }
+
+  bool _isSameDay(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  int _dayOffsetFromToday(DateTime day) {
+    final today = _dateOnly(DateTime.now());
+    final cleanDay = _dateOnly(day);
+    return cleanDay.difference(today).inDays;
+  }
+
+  int _compareReadings(GlucoseReading a, GlucoseReading b) {
+    final timeCompare = a.time.compareTo(b.time);
+
+    if (timeCompare != 0) return timeCompare;
+
+    final aCreated = a.createdAt ?? a.time;
+    final bCreated = b.createdAt ?? b.time;
+
+    return aCreated.compareTo(bCreated);
+  }
+
+  String _secondKey(DateTime time) {
+    return '${time.year}-${time.month}-${time.day} '
+        '${time.hour}:${time.minute}:${time.second}';
+  }
+
+  double _timeToX(DateTime time) {
+    return time.hour + (time.minute / 60.0) + (time.second / 3600.0);
+  }
+
+  bool _isSuspiciousJump(GlucoseReading prev, GlucoseReading curr) {
+    final seconds = curr.time.difference(prev.time).inSeconds.abs();
+    if (seconds <= 0) return false;
+
+    final minutes = seconds / 60.0;
+    final delta = (curr.value - prev.value).abs();
+    final rate = delta / minutes;
+
+    if (minutes <= 2 && delta >= 120) return true;
+    if (minutes <= 5 && rate >= 60) return true;
+
+    return false;
+  }
+
+  List<PreparedReading> _prepareReadingsList(List<GlucoseReading> source) {
+    final list = List<GlucoseReading>.from(source);
+    list.sort(_compareReadings);
+
+    final Map<String, GlucoseReading> latestBySecond = {};
+
+    for (final reading in list) {
+      latestBySecond[_secondKey(reading.time)] = reading;
+    }
+
+    final cleaned = latestBySecond.values.toList();
+    cleaned.sort(_compareReadings);
+
+    final List<PreparedReading> prepared = [];
+
+    for (int i = 0; i < cleaned.length; i++) {
+      final current = cleaned[i];
+
+      bool suspicious = false;
+      if (i > 0) {
+        final prevVisible = prepared
+            .where((e) => !e.suspicious)
+            .map((e) => e.reading)
+            .toList();
+
+        if (prevVisible.isNotEmpty) {
+          suspicious = _isSuspiciousJump(prevVisible.last, current);
+        }
+      }
+
+      prepared.add(PreparedReading(reading: current, suspicious: suspicious));
+    }
+
+    return prepared;
+  }
+
+  List<PreparedReading> _prepareReadingsForDay(DateTime day) {
+    final list = readings.where((r) => _isSameDay(r.time, day)).toList();
+    return _prepareReadingsList(list);
+  }
+
+  List<PreparedReading> _visiblePrepared(List<PreparedReading> items) {
+    return items.where((e) => !e.suspicious).toList();
+  }
+
+  List<List<FlSpot>> _buildLineSegments(List<PreparedReading> items) {
+    final visibleItems = _visiblePrepared(items);
+
+    final List<List<FlSpot>> segments = [];
+    final List<FlSpot> current = [];
+
+    for (final item in visibleItems) {
+      current.add(FlSpot(_timeToX(item.reading.time), item.reading.value));
+    }
+
+    if (current.length >= 2) {
+      segments.add(current);
+    }
+
+    return segments;
+  }
+
+  List<FlSpot> _normalSpots(List<PreparedReading> items) {
+    return _visiblePrepared(
+      items,
+    ).map((e) => FlSpot(_timeToX(e.reading.time), e.reading.value)).toList();
+  }
+
+  PreparedReading? _preparedReadingForSpot(
+    FlSpot spot,
+    List<PreparedReading> items,
+  ) {
+    final visibleItems = _visiblePrepared(items);
+
+    if (visibleItems.isEmpty) return null;
+
+    PreparedReading? closest;
+    double bestDistance = double.infinity;
+
+    for (final item in visibleItems) {
+      final x = _timeToX(item.reading.time);
+      final y = item.reading.value;
+
+      final dx = (x - spot.x).abs();
+      final dy = (y - spot.y).abs();
+      final distance = dx + (dy / 1000);
+
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        closest = item;
+      }
+    }
+
+    return closest;
+  }
+
+  double _minYForPrepared(List<PreparedReading> items) {
+    final visibleItems = _visiblePrepared(items);
+
+    if (visibleItems.isEmpty) return 40;
+
+    final minVal = visibleItems
+        .map((e) => e.reading.value)
+        .reduce((a, b) => a < b ? a : b);
+
+    final safeMin = math.min(minVal, 70.0);
+    return (safeMin - 25).clamp(0, 350).toDouble();
+  }
+
+  double _maxYForPrepared(List<PreparedReading> items) {
+    final visibleItems = _visiblePrepared(items);
+
+    if (visibleItems.isEmpty) return 220;
+
+    final maxVal = visibleItems
+        .map((e) => e.reading.value)
+        .reduce((a, b) => a > b ? a : b);
+
+    final safeMax = math.max(maxVal, 180.0);
+    return (safeMax + 25).clamp(90, 620).toDouble();
+  }
+
+  String _formatChartDay(DateTime day) {
+    final today = _dateOnly(DateTime.now());
+    final yesterday = today.subtract(const Duration(days: 1));
+    final tomorrow = today.add(const Duration(days: 1));
+
+    if (_isSameDay(day, today)) return 'Today';
+    if (_isSameDay(day, yesterday)) return 'Yesterday';
+    if (_isSameDay(day, tomorrow)) return 'Tomorrow';
+
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+
+    return '${months[day.month - 1]} ${day.day}, ${day.year}';
+  }
+
+  void _goToPreviousDay() {
+    _chartDayController.previousPage(
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOut,
+    );
+  }
+
+  void _goToNextDay() {
+    _chartDayController.nextPage(
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOut,
+    );
+  }
+
+  Future<void> _loadPatientProfile() async {
+    try {
+      final patientProfile = await OnboardingApi.getPatientProfile(
+        userId: widget.userId,
       );
-      currentGlucose = val;
-      glucoseStatus = _getGlucoseStatus(val);
-      statusColor = _getGlucoseColor(val);
-      lastReading = 'just now';
-    });
-    _glucoseController.clear();
+
+      if (patientProfile == null) return;
+
+      setState(() {
+        patientCorrectionFactor = double.tryParse(
+          (patientProfile['correctionFactor'] ?? '').toString(),
+        );
+      });
+    } catch (e) {
+      debugPrint('Failed to load patient profile: $e');
+    }
+  }
+
+  Future<void> _loadReadings() async {
+    try {
+      final data = await GlucoseApi.getReadings(widget.userId);
+
+      final loaded = data.map((e) => GlucoseReading.fromApiJson(e)).toList();
+
+      loaded.sort(_compareReadings);
+      _reindexReadings(loaded);
+
+      final preparedAll = _prepareReadingsList(loaded);
+      final visibleAll = _visiblePrepared(preparedAll);
+
+      final DateTime dayToShow = visibleAll.isNotEmpty
+          ? _dateOnly(visibleAll.last.reading.time)
+          : _dateOnly(DateTime.now());
+
+      setState(() {
+        readings = loaded;
+        selectedChartDay = dayToShow;
+        _refreshCurrentReading();
+      });
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!_chartDayController.hasClients) return;
+
+        final page = _baseChartPage + _dayOffsetFromToday(dayToShow);
+        _chartDayController.jumpToPage(page);
+      });
+    } catch (e) {
+      debugPrint('Failed to load readings: $e');
+    }
+  }
+
+  void _reindexReadings(List<GlucoseReading> list) {
+    for (int i = 0; i < list.length; i++) {
+      list[i] = list[i].copyWith(x: i.toDouble());
+    }
+  }
+
+  void _refreshCurrentReading() {
+    if (readings.isEmpty) {
+      currentGlucose = null;
+      glucoseStatus = 'No readings yet';
+      lastReading = '';
+      statusColor = const Color(0xff1D9E75);
+      return;
+    }
+
+    final preparedAll = _prepareReadingsList(readings);
+    final visibleAll = _visiblePrepared(preparedAll);
+
+    if (visibleAll.isEmpty) {
+      currentGlucose = null;
+      glucoseStatus = 'No valid readings';
+      lastReading = '';
+      statusColor = const Color(0xff1D9E75);
+      return;
+    }
+
+    final latest = visibleAll.last.reading;
+
+    currentGlucose = latest.value;
+    glucoseStatus = _getGlucoseStatus(latest.value);
+    statusColor = _getGlucoseColor(latest.value);
+    lastReading = _formatRelative(latest.time);
+  }
+
+  Future<void> _addReading() async {
+    final val = double.tryParse(_glucoseController.text.trim());
+
+    if (val == null || val < 1 || val > 600) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a valid glucose reading.')),
+      );
+      return;
+    }
+
+    try {
+      final saved = await GlucoseApi.addReading(
+        userId: widget.userId,
+        value: val,
+        readingTime: DateTime.now(),
+      );
+
+      final newReading = GlucoseReading.fromApiJson(saved);
+
+      setState(() {
+        readings.add(newReading);
+        readings.sort(_compareReadings);
+        _reindexReadings(readings);
+
+        final preparedAll = _prepareReadingsList(readings);
+        final visibleAll = _visiblePrepared(preparedAll);
+
+        selectedChartDay = visibleAll.isNotEmpty
+            ? _dateOnly(visibleAll.last.reading.time)
+            : _dateOnly(newReading.time);
+
+        _refreshCurrentReading();
+      });
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!_chartDayController.hasClients) return;
+
+        final page = _baseChartPage + _dayOffsetFromToday(selectedChartDay);
+        _chartDayController.jumpToPage(page);
+      });
+
+      _glucoseController.clear();
+
+      final preparedAll = _prepareReadingsList(readings);
+      final visibleAll = _visiblePrepared(preparedAll);
+      final isNewReadingVisible = visibleAll.any(
+        (item) => item.reading.id == newReading.id,
+      );
+
+      if (!mounted) return;
+
+      if (!isNewReadingVisible) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'This reading looks unusual and was ignored on the chart.',
+            ),
+          ),
+        );
+        return;
+      }
+
+      if (val < 70) {
+        await _openLowGlucoseScreen(
+          readingId: saved['_id'].toString(),
+          glucoseValue: val,
+        );
+      }
+
+      if (val > 180) {
+        _openHighGlucoseScreen(val);
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to save reading: $e')));
+    }
+  }
+
+  Future<void> _openLowGlucoseScreen({
+    required String readingId,
+    required double glucoseValue,
+  }) async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LowGlucoseScreen(
+          readingId: readingId,
+          glucoseValue: glucoseValue,
+          userId: widget.userId,
+        ),
+      ),
+    );
+
+    if (!mounted) return;
+
+    if (result != null && result is Map && result['saved'] == true) {
+      await _loadReadings();
+    }
+  }
+
+  void _openHighGlucoseScreen(double glucoseValue) {
+    if (!mounted) return;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => HighGlucoseScreen(
+          glucoseValue: glucoseValue,
+          userId: widget.userId,
+          correctionFactor: patientCorrectionFactor,
+          targetGlucose: patientTargetGlucose,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openReadingFromChart(GlucoseReading reading) async {
+    if (reading.id == null) return;
+
+    if (reading.value < 70) {
+      await _openLowGlucoseScreen(
+        readingId: reading.id!,
+        glucoseValue: reading.value,
+      );
+      return;
+    }
+
+    if (reading.value > 180) {
+      _openHighGlucoseScreen(reading.value);
+      return;
+    }
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'This reading is in range: ${_displayReadingValue(reading.value)} mg/dL',
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAnimatedMascot({double size = 118}) {
+    return SizedBox(
+      width: size,
+      height: size,
+      child: AnimatedBuilder(
+        animation: _mascotController,
+        builder: (context, child) {
+          final t = _mascotController.value;
+          double dy = 0;
+          double dx = 0;
+          double scale = 1;
+          double angle = 0;
+
+          if (currentGlucose == null) {
+            dy = math.sin(t * 2 * math.pi) * 2.5;
+          } else if (currentGlucose! < 70) {
+            dy = math.sin(t * 2 * math.pi) * 4;
+            dx = math.sin(t * 4 * math.pi) * 1.5;
+            angle = math.sin(t * 4 * math.pi) * 0.015;
+          } else if (currentGlucose! > 180) {
+            dy = math.sin(t * 2 * math.pi) * 3;
+            scale = 1 + (math.sin(t * 2 * math.pi) * 0.02);
+          } else {
+            dy = math.sin(t * 2 * math.pi) * 2.5;
+            angle = math.sin(t * 2 * math.pi) * 0.008;
+          }
+
+          return Transform.translate(
+            offset: Offset(dx, dy),
+            child: Transform.rotate(
+              angle: angle,
+              child: Transform.scale(scale: scale, child: child),
+            ),
+          );
+        },
+        child: Image.asset(
+          _getMascotPath(),
+          fit: BoxFit.contain,
+          errorBuilder: (context, error, stackTrace) {
+            return const Icon(
+              Icons.image_not_supported_outlined,
+              color: Colors.white70,
+              size: 50,
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  List<LineTooltipItem?> _buildTooltipItems(
+    List<LineBarSpot> touchedSpots,
+    List<PreparedReading> prepared,
+  ) {
+    final List<LineTooltipItem?> items = [];
+
+    for (int i = 0; i < touchedSpots.length; i++) {
+      if (i > 0) {
+        items.add(null);
+        continue;
+      }
+
+      final touched = touchedSpots[i];
+      final item = _preparedReadingForSpot(touched, prepared);
+
+      if (item == null) {
+        items.add(null);
+        continue;
+      }
+
+      final reading = item.reading;
+
+      items.add(
+        LineTooltipItem(
+          '${_displayReadingValue(reading.value)} mg/dL\n${_formatTime(reading.time)}',
+          TextStyle(
+            color: _getGlucoseColor(reading.value),
+            fontWeight: FontWeight.w600,
+            fontSize: 12,
+            height: 1.5,
+          ),
+        ),
+      );
+    }
+
+    return items;
+  }
+
+  Widget _buildLeftTitle(double value, TitleMeta meta) {
+    final rounded = value.round();
+
+    if (rounded % 100 != 0 && rounded != 50) return const SizedBox();
+
+    return Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: Text(
+        '$rounded',
+        style: const TextStyle(
+          fontSize: 9.5,
+          color: Colors.white70,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBottomTitle(double value, TitleMeta meta) {
+    String label;
+
+    if (value == 0) {
+      label = '12A';
+    } else if (value == 6) {
+      label = '6A';
+    } else if (value == 12) {
+      label = '12P';
+    } else if (value == 18) {
+      label = '6P';
+    } else if (value == 24) {
+      label = '12A';
+    } else {
+      return const SizedBox();
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Text(
+        label,
+        style: const TextStyle(fontSize: 10, color: Colors.white70),
+      ),
+    );
   }
 
   @override
@@ -157,7 +790,17 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
             ],
           ),
         ),
-        _circleIcon(Icons.notifications_none_rounded),
+        GestureDetector(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => NotificationsScreen(userId: widget.userId),
+              ),
+            );
+          },
+          child: _circleIcon(Icons.notifications_none_rounded),
+        ),
         const SizedBox(width: 10),
         GestureDetector(
           onTap: () {
@@ -173,184 +816,468 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
   }
 
   Widget _buildGlucoseCard() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: const Color(0xff185FA5),
-        borderRadius: BorderRadius.circular(22),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isMobile = constraints.maxWidth < 500;
+
+        return Container(
+          width: double.infinity,
+          padding: EdgeInsets.all(isMobile ? 14 : 18),
+          decoration: BoxDecoration(
+            color: const Color(0xff185FA5),
+            borderRadius: BorderRadius.circular(22),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xff185FA5).withOpacity(0.18),
+                blurRadius: 18,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Column(
             children: [
-              Expanded(
-                child: Column(
+              if (isMobile) ...[
+                Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'CURRENT GLUCOSE',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Colors.white70,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          currentGlucose.toStringAsFixed(0),
-                          style: const TextStyle(
-                            fontSize: 38,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.white,
-                            height: 1.1,
+                    Expanded(child: _buildCurrentGlucoseBlock()),
+                    const SizedBox(width: 8),
+                    _buildAnimatedMascot(size: 86),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                _buildChartDayInfo(),
+              ] else ...[
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildCurrentGlucoseBlock(),
+                    const SizedBox(width: 12),
+                    Expanded(child: _buildChartDayInfo()),
+                    const SizedBox(width: 12),
+                    _buildAnimatedMascot(size: 118),
+                  ],
+                ),
+              ],
+              const SizedBox(height: 16),
+              SizedBox(
+                height: isMobile ? 260 : 245,
+                child: readings.isEmpty
+                    ? const Center(
+                        child: Text(
+                          'No readings yet.\nAdd your first glucose reading below.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: 14,
+                            height: 1.5,
                           ),
                         ),
-                        const SizedBox(width: 5),
-                        const Padding(
-                          padding: EdgeInsets.only(bottom: 6),
-                          child: Text(
-                            'mg/dL',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Colors.white70,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 9,
-                        vertical: 3,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
+                      )
+                    : Stack(
                         children: [
-                          Container(
-                            width: 6,
-                            height: 6,
-                            decoration: BoxDecoration(
-                              color: statusColor,
-                              shape: BoxShape.circle,
+                          Padding(
+                            padding: EdgeInsets.only(
+                              left: isMobile ? 34 : 44,
+                              right: isMobile ? 18 : 38,
+                            ),
+                            child: PageView.builder(
+                              controller: _chartDayController,
+                              onPageChanged: (page) {
+                                final diff = page - _baseChartPage;
+                                setState(() {
+                                  selectedChartDay = _dateOnly(
+                                    DateTime.now().add(Duration(days: diff)),
+                                  );
+                                });
+                              },
+                              itemBuilder: (context, page) {
+                                final diff = page - _baseChartPage;
+                                final pageDay = _dateOnly(
+                                  DateTime.now().add(Duration(days: diff)),
+                                );
+
+                                final prepared = _prepareReadingsForDay(
+                                  pageDay,
+                                );
+                                final visiblePrepared = _visiblePrepared(
+                                  prepared,
+                                );
+                                final segments = _buildLineSegments(prepared);
+                                final normalSpots = _normalSpots(prepared);
+
+                                if (visiblePrepared.isEmpty) {
+                                  return const Center(
+                                    child: Text(
+                                      'No valid readings for this day.',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: 14,
+                                        height: 1.5,
+                                      ),
+                                    ),
+                                  );
+                                }
+
+                                return LineChart(
+                                  LineChartData(
+                                    backgroundColor: Colors.white.withOpacity(
+                                      0.12,
+                                    ),
+                                    minX: 0,
+                                    maxX: 24,
+                                    minY: _minYForPrepared(prepared),
+                                    maxY: _maxYForPrepared(prepared),
+                                    rangeAnnotations: RangeAnnotations(
+                                      horizontalRangeAnnotations: [
+                                        HorizontalRangeAnnotation(
+                                          y1: 70,
+                                          y2: 180,
+                                          color: Colors.green.withOpacity(0.18),
+                                        ),
+                                      ],
+                                    ),
+                                    lineTouchData: LineTouchData(
+                                      handleBuiltInTouches: true,
+                                      touchTooltipData: LineTouchTooltipData(
+                                        getTooltipColor: (_) => Colors.white,
+                                        tooltipRoundedRadius: 12,
+                                        fitInsideHorizontally: true,
+                                        fitInsideVertically: true,
+                                        getTooltipItems: (touchedSpots) {
+                                          return _buildTooltipItems(
+                                            touchedSpots,
+                                            prepared,
+                                          );
+                                        },
+                                      ),
+                                      touchCallback: (event, response) {
+                                        if (!event
+                                                .isInterestedForInteractions ||
+                                            response == null ||
+                                            response.lineBarSpots == null ||
+                                            response.lineBarSpots!.isEmpty) {
+                                          return;
+                                        }
+
+                                        if (event is FlTapUpEvent) {
+                                          final spot =
+                                              response.lineBarSpots!.first;
+                                          final item = _preparedReadingForSpot(
+                                            spot,
+                                            prepared,
+                                          );
+
+                                          if (item != null) {
+                                            _openReadingFromChart(item.reading);
+                                          }
+                                        }
+                                      },
+                                    ),
+                                    titlesData: FlTitlesData(
+                                      leftTitles: AxisTitles(
+                                        sideTitles: SideTitles(
+                                          showTitles: true,
+                                          reservedSize: isMobile ? 28 : 34,
+                                          interval: isMobile ? 100 : 50,
+                                          getTitlesWidget: _buildLeftTitle,
+                                        ),
+                                      ),
+                                      rightTitles: const AxisTitles(
+                                        sideTitles: SideTitles(
+                                          showTitles: false,
+                                        ),
+                                      ),
+                                      topTitles: const AxisTitles(
+                                        sideTitles: SideTitles(
+                                          showTitles: false,
+                                        ),
+                                      ),
+                                      bottomTitles: AxisTitles(
+                                        sideTitles: SideTitles(
+                                          showTitles: true,
+                                          reservedSize: 30,
+                                          interval: isMobile ? 6 : 3,
+                                          getTitlesWidget: _buildBottomTitle,
+                                        ),
+                                      ),
+                                    ),
+                                    gridData: FlGridData(
+                                      show: true,
+                                      drawVerticalLine: true,
+                                      verticalInterval: isMobile ? 6 : 3,
+                                      horizontalInterval: isMobile ? 50 : 25,
+                                      getDrawingVerticalLine: (_) => FlLine(
+                                        color: Colors.white.withOpacity(0.08),
+                                        strokeWidth: 1,
+                                      ),
+                                      getDrawingHorizontalLine: (_) => FlLine(
+                                        color: Colors.white.withOpacity(0.08),
+                                        strokeWidth: 1,
+                                      ),
+                                    ),
+                                    borderData: FlBorderData(show: false),
+                                    lineBarsData: [
+                                      ...segments.map(
+                                        (segment) => LineChartBarData(
+                                          spots: segment,
+                                          isCurved: true,
+                                          curveSmoothness: 0.14,
+                                          preventCurveOverShooting: true,
+                                          color: const Color(0xffA9D2FF),
+                                          barWidth: isMobile ? 2.8 : 3.2,
+                                          isStrokeCapRound: true,
+                                          dotData: const FlDotData(show: false),
+                                          belowBarData: BarAreaData(
+                                            show: true,
+                                            color: Colors.white.withOpacity(
+                                              0.04,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      LineChartBarData(
+                                        spots: normalSpots,
+                                        isCurved: false,
+                                        color: Colors.transparent,
+                                        barWidth: 0,
+                                        belowBarData: BarAreaData(show: false),
+                                        dotData: FlDotData(
+                                          show: true,
+                                          getDotPainter:
+                                              (spot, percent, barData, index) {
+                                                return FlDotCirclePainter(
+                                                  radius: isMobile ? 5.2 : 5.8,
+                                                  color: _getGlucoseColor(
+                                                    spot.y,
+                                                  ),
+                                                  strokeColor: Colors.white,
+                                                  strokeWidth: 2,
+                                                );
+                                              },
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
                             ),
                           ),
-                          const SizedBox(width: 5),
-                          Text(
-                            '$glucoseStatus · $lastReading',
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: Colors.white,
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: _chartSideArrow(
+                              icon: Icons.arrow_back_ios_new_rounded,
+                              onTap: _goToPreviousDay,
+                            ),
+                          ),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: _chartSideArrow(
+                              icon: Icons.arrow_forward_ios_rounded,
+                              onTap: _goToNextDay,
                             ),
                           ),
                         ],
                       ),
-                    ),
-                  ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildCurrentGlucoseBlock() {
+    return SizedBox(
+      width: 138,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'CURRENT GLUCOSE',
+            style: TextStyle(
+              fontSize: 11,
+              color: Colors.white70,
+              letterSpacing: 0.5,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                _displayGlucoseValue(currentGlucose),
+                style: const TextStyle(
+                  fontSize: 38,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.white,
+                  height: 1.1,
                 ),
               ),
-              ElevatedButton(
-                onPressed: () {
-                  // Focus input
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  foregroundColor: const Color(0xff185FA5),
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 12,
-                  ),
-                ),
-                child: const Text(
-                  '+ Add\nreading',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+              const SizedBox(width: 5),
+              const Padding(
+                padding: EdgeInsets.only(bottom: 6),
+                child: Text(
+                  'mg/dL',
+                  style: TextStyle(fontSize: 13, color: Colors.white70),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          SizedBox(
-            height: 110,
-            child: LineChart(
-              LineChartData(
-                minY: 60,
-                maxY: 200,
-                titlesData: FlTitlesData(
-                  leftTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
-                  rightTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
-                  topTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
-                  bottomTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      reservedSize: 22,
-                      getTitlesWidget: (value, meta) {
-                        final idx = value.toInt();
-                        if (idx < 0 || idx >= glucoseLabels.length)
-                          return const SizedBox();
-                        return Text(
-                          glucoseLabels[idx],
-                          style: const TextStyle(
-                            fontSize: 10,
-                            color: Colors.white60,
-                          ),
-                        );
-                      },
-                    ),
+          const SizedBox(height: 6),
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 250),
+            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 250),
+                  width: 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: statusColor,
+                    shape: BoxShape.circle,
                   ),
                 ),
-                gridData: FlGridData(
-                  show: true,
-                  drawVerticalLine: false,
-                  getDrawingHorizontalLine: (_) =>
-                      const FlLine(color: Colors.white10, strokeWidth: 1),
-                ),
-                borderData: FlBorderData(show: false),
-                lineBarsData: [
-                  LineChartBarData(
-                    spots: glucoseSpots,
-                    isCurved: true,
-                    color: const Color(0xff85B7EB),
-                    barWidth: 2,
-                    dotData: FlDotData(
-                      show: true,
-                      getDotPainter: (spot, _, __, ___) => FlDotCirclePainter(
-                        radius: 5,
-                        color: _getGlucoseColor(spot.y),
-                        strokeColor: Colors.white,
-                        strokeWidth: 2,
-                      ),
-                    ),
-                    belowBarData: BarAreaData(
-                      show: true,
-                      color: Colors.white.withOpacity(0.08),
-                    ),
+                const SizedBox(width: 5),
+                Flexible(
+                  child: Text(
+                    lastReading.isEmpty
+                        ? glucoseStatus
+                        : '$glucoseStatus · $lastReading',
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 11, color: Colors.white),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildChartDayInfo() {
+    final dayReadings = _prepareReadingsForDay(selectedChartDay);
+    final validCount = _visiblePrepared(dayReadings).length;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isTiny = constraints.maxWidth < 290;
+
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.13),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: Colors.white.withOpacity(0.08),
+              width: 0.8,
+            ),
+          ),
+          child: isTiny
+              ? Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _formatChartDay(selectedChartDay),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 15.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '$validCount readings · 24-hour chart',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                )
+              : Wrap(
+                  alignment: WrapAlignment.center,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 10,
+                  runSpacing: 4,
+                  children: [
+                    Text(
+                      _formatChartDay(selectedChartDay),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 15.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Container(
+                      width: 4,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.6),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    Text(
+                      '$validCount readings',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    Container(
+                      width: 4,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.6),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const Text(
+                      '24-hour chart',
+                      style: TextStyle(
+                        color: Colors.white54,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+        );
+      },
+    );
+  }
+
+  Widget _chartSideArrow({
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        customBorder: const CircleBorder(),
+        child: Container(
+          width: 34,
+          height: 54,
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.13),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: Colors.white.withOpacity(0.08)),
+          ),
+          child: Icon(icon, size: 18, color: Colors.white),
+        ),
       ),
     );
   }
@@ -361,7 +1288,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
         Expanded(
           child: TextField(
             controller: _glucoseController,
-            keyboardType: TextInputType.number,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: InputDecoration(
               hintText: 'Enter mg/dL...',
               hintStyle: const TextStyle(color: Color(0xff9AB8D0)),
@@ -372,24 +1299,24 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                 vertical: 12,
               ),
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(16),
                 borderSide: const BorderSide(
                   color: Color(0xffB5D4F4),
-                  width: 0.5,
+                  width: 0.7,
                 ),
               ),
               enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(16),
                 borderSide: const BorderSide(
                   color: Color(0xffB5D4F4),
-                  width: 0.5,
+                  width: 0.7,
                 ),
               ),
               focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(16),
                 borderSide: const BorderSide(
                   color: Color(0xff378ADD),
-                  width: 1,
+                  width: 1.2,
                 ),
               ),
             ),
@@ -404,13 +1331,13 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
             foregroundColor: Colors.white,
             elevation: 0,
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(16),
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
+            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 15),
           ),
           child: const Text(
             'Add',
-            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
           ),
         ),
       ],
@@ -424,7 +1351,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: Colors.black.withOpacity(0.06), width: 0.5),
+        border: Border.all(color: Colors.black.withOpacity(0.05), width: 0.5),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -436,7 +1363,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                 'Meals',
                 style: TextStyle(
                   fontSize: 15,
-                  fontWeight: FontWeight.w500,
+                  fontWeight: FontWeight.w600,
                   color: Color(0xff17466E),
                 ),
               ),
@@ -449,7 +1376,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
           const SizedBox(height: 10),
           ...meals.asMap().entries.map(
             (e) => Padding(
-              padding: const EdgeInsets.only(bottom: 7),
+              padding: const EdgeInsets.only(bottom: 8),
               child: _mealTile(
                 title: e.value['title'] as String,
                 status: e.value['status'] as String,
@@ -467,8 +1394,8 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     final items = [
       {'icon': Icons.home_rounded, 'label': 'Home'},
       {'icon': Icons.restaurant_menu_rounded, 'label': 'Meals'},
+      {'icon': Icons.insert_chart_outlined_rounded, 'label': 'Reports'},
       {'icon': Icons.grid_view_rounded, 'label': 'Menu'},
-      {'icon': Icons.bolt_rounded, 'label': 'Activity'},
     ];
 
     return Container(
@@ -491,6 +1418,11 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                 _showMainMenu();
                 return;
               }
+              if (item['label'] == 'Reports') {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => ReportsScreen(userId: widget.userId),
 
               if (item['label'] == 'Meals') {
                 Navigator.push(
@@ -505,23 +1437,32 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
               setState(() => selectedNavIndex = index);
             },
             child: AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              duration: const Duration(milliseconds: 220),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               decoration: BoxDecoration(
-                color: selected ? const Color(0xffE6F1FB) : Colors.transparent,
-                borderRadius: BorderRadius.circular(12),
+                color: selected ? const Color(0xffDDEEFF) : Colors.transparent,
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: selected
+                    ? [
+                        BoxShadow(
+                          color: const Color(0xffC9E2FB).withOpacity(0.7),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ]
+                    : [],
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(
                     item['icon'] as IconData,
-                    size: 18,
+                    size: 19,
                     color: selected
                         ? const Color(0xff185FA5)
                         : const Color(0xff888780),
                   ),
-                  const SizedBox(height: 3),
+                  const SizedBox(height: 4),
                   Text(
                     item['label'] as String,
                     style: TextStyle(
@@ -529,7 +1470,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                       color: selected
                           ? const Color(0xff185FA5)
                           : const Color(0xff888780),
-                      fontWeight: selected ? FontWeight.w500 : FontWeight.w400,
+                      fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
                     ),
                   ),
                 ],
@@ -543,14 +1484,14 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
 
   Widget _circleIcon(IconData icon) {
     return Container(
-      width: 36,
-      height: 36,
+      width: 40,
+      height: 40,
       decoration: BoxDecoration(
         color: Colors.white,
         shape: BoxShape.circle,
-        border: Border.all(color: Colors.black.withOpacity(0.06), width: 0.5),
+        border: Border.all(color: Colors.black.withOpacity(0.05), width: 0.5),
       ),
-      child: Icon(icon, size: 16, color: const Color(0xff378ADD)),
+      child: Icon(icon, size: 18, color: const Color(0xff378ADD)),
     );
   }
 
@@ -560,56 +1501,62 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     required IconData icon,
     required VoidCallback onTap,
   }) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(14),
-      onTap: onTap,
-      child: Ink(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-        decoration: BoxDecoration(
-          color: const Color(0xffF5FAFE),
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: const Color(0xffE6F1FB),
-                borderRadius: BorderRadius.circular(10),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        splashColor: const Color(0xffBFE2FF).withOpacity(0.35),
+        highlightColor: const Color(0xffD9EEFF).withOpacity(0.45),
+        onTap: onTap,
+        child: Ink(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          decoration: BoxDecoration(
+            color: _softBlue,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xffD8EBFF)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: _softBlue2,
+                  borderRadius: BorderRadius.circular(13),
+                ),
+                child: Icon(icon, size: 20, color: _mainBlue),
               ),
-              child: Icon(icon, size: 18, color: const Color(0xff185FA5)),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                      color: Color(0xff17466E),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xff17466E),
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 1),
-                  Text(
-                    status,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: Color(0xff7A9AB5),
+                    const SizedBox(height: 2),
+                    Text(
+                      status,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Color(0xff7A9AB5),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-            const Icon(
-              Icons.arrow_forward_ios_rounded,
-              size: 14,
-              color: Color(0xffB5D4F4),
-            ),
-          ],
+              const Icon(
+                Icons.arrow_forward_ios_rounded,
+                size: 14,
+                color: Color(0xff9FC9F5),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -642,7 +1589,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
         child: Container(
           padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
           decoration: const BoxDecoration(
-            color: Colors.white,
+            color: Color(0xffF9FCFF),
             borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
           ),
           child: Column(
@@ -654,8 +1601,8 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                 mealTitle,
                 style: const TextStyle(
                   fontSize: 20,
-                  fontWeight: FontWeight.w500,
-                  color: Color(0xff0C447C),
+                  fontWeight: FontWeight.w700,
+                  color: _textBlue,
                 ),
               ),
               const SizedBox(height: 4),
@@ -695,32 +1642,40 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                       builder: (_) => const BarcodeScannerScreen(),
                     ),
                   );
+
                   if (barcode == null || barcode.toString().isEmpty) return;
                   if (!mounted) return;
+
                   showDialog(
                     context: context,
                     barrierDismissible: false,
                     builder: (_) =>
                         const Center(child: CircularProgressIndicator()),
                   );
+
                   final FoodProduct? product =
                       await OpenFoodFactsService.getProductByBarcode(barcode);
+
                   if (mounted) Navigator.pop(context);
                   if (!mounted) return;
+
                   if (product == null) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('Product not found')),
                     );
                     return;
                   }
+
                   final patientProfile = await OnboardingApi.getPatientProfile(
                     userId: widget.userId,
                   );
+
                   final double? carbRatio =
                       patientProfile != null &&
                           patientProfile['carbRatio'] != null
                       ? double.tryParse(patientProfile['carbRatio'].toString())
                       : null;
+
                   Navigator.push(
                     context,
                     MaterialPageRoute(
@@ -769,7 +1724,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
       },
       {'icon': Icons.restaurant_outlined, 'label': 'Nutritionist'},
       {'icon': Icons.water_drop_outlined, 'label': 'Water'},
-      {'icon': Icons.insert_chart_outlined_rounded, 'label': 'Reports'},
+      {'icon': Icons.bolt_rounded, 'label': 'Activity'},
     ];
 
     showModalBottomSheet(
@@ -786,7 +1741,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
           builder: (context, scrollController) => Container(
             padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
             decoration: const BoxDecoration(
-              color: Colors.white,
+              color: Color(0xffF9FCFF),
               borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
             ),
             child: Column(
@@ -797,8 +1752,8 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                   'Menu',
                   style: TextStyle(
                     fontSize: 20,
-                    fontWeight: FontWeight.w500,
-                    color: Color(0xff0C447C),
+                    fontWeight: FontWeight.w700,
+                    color: _textBlue,
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -811,6 +1766,18 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                       icon: menuItems[i]['icon'] as IconData,
                       label: menuItems[i]['label'] as String,
                       onTap: () {
+                        final label = menuItems[i]['label'] as String;
+
+                        Navigator.pop(context);
+
+                        if (label == 'Activity') {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  ActivityScreen(userId: widget.userId),
+                            ),
+                          );
                         Navigator.pop(context);
 
                         if (menuItems[i]['label'] == 'Chat / Ask anything') {
@@ -844,7 +1811,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
 
   Widget _sheetHandle() {
     return Container(
-      width: 40,
+      width: 42,
       height: 4,
       decoration: BoxDecoration(
         color: const Color(0xffC8DDEC),
@@ -859,56 +1826,62 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     required String subtitle,
     required VoidCallback onTap,
   }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Ink(
-        padding: const EdgeInsets.all(13),
-        decoration: BoxDecoration(
-          color: const Color(0xffF5FAFE),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: const Color(0xffE6F1FB),
-                borderRadius: BorderRadius.circular(13),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        splashColor: const Color(0xffBFE2FF).withOpacity(0.35),
+        highlightColor: const Color(0xffD9EEFF).withOpacity(0.45),
+        child: Ink(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: _softBlue,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xffD8EBFF)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: _softBlue2,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(icon, size: 22, color: _mainBlue),
               ),
-              child: Icon(icon, size: 20, color: const Color(0xff185FA5)),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: Color(0xff0C447C),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w600,
+                        color: _textBlue,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Color(0xff7A9AB5),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xff7A9AB5),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-            const Icon(
-              Icons.arrow_forward_ios_rounded,
-              size: 14,
-              color: Color(0xffB5D4F4),
-            ),
-          ],
+              const Icon(
+                Icons.arrow_forward_ios_rounded,
+                size: 14,
+                color: Color(0xff9FC9F5),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -919,45 +1892,102 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     required String label,
     required VoidCallback onTap,
   }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Ink(
-        padding: const EdgeInsets.all(13),
-        decoration: BoxDecoration(
-          color: const Color(0xffF5FAFE),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 46,
-              height: 46,
-              decoration: BoxDecoration(
-                color: const Color(0xffE6F1FB),
-                borderRadius: BorderRadius.circular(13),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        splashColor: const Color(0xffBFE2FF).withOpacity(0.35),
+        highlightColor: const Color(0xffD9EEFF).withOpacity(0.45),
+        child: Ink(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: _softBlue,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xffD8EBFF)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: _softBlue2,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(icon, size: 22, color: _mainBlue),
               ),
-              child: Icon(icon, size: 22, color: const Color(0xff185FA5)),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                label,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: Color(0xff0C447C),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w600,
+                    color: _textBlue,
+                  ),
                 ),
               ),
-            ),
-            const Icon(
-              Icons.arrow_forward_ios_rounded,
-              size: 14,
-              color: Color(0xffB5D4F4),
-            ),
-          ],
+              const Icon(
+                Icons.arrow_forward_ios_rounded,
+                size: 14,
+                color: Color(0xff9FC9F5),
+              ),
+            ],
+          ),
         ),
       ),
+    );
+  }
+}
+
+class PreparedReading {
+  final GlucoseReading reading;
+  final bool suspicious;
+
+  PreparedReading({required this.reading, this.suspicious = false});
+}
+
+class GlucoseReading {
+  final String? id;
+  final double x;
+  final double value;
+  final DateTime time;
+  final DateTime? createdAt;
+
+  GlucoseReading({
+    this.id,
+    required this.x,
+    required this.value,
+    required this.time,
+    this.createdAt,
+  });
+
+  GlucoseReading copyWith({
+    String? id,
+    double? x,
+    double? value,
+    DateTime? time,
+    DateTime? createdAt,
+  }) {
+    return GlucoseReading(
+      id: id ?? this.id,
+      x: x ?? this.x,
+      value: value ?? this.value,
+      time: time ?? this.time,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  factory GlucoseReading.fromApiJson(Map<String, dynamic> json) {
+    return GlucoseReading(
+      id: json['_id']?.toString(),
+      x: 0,
+      value: (json['value'] as num).toDouble(),
+      time: DateTime.parse(json['readingTime']),
+      createdAt: json['createdAt'] != null
+          ? DateTime.tryParse(json['createdAt'].toString())
+          : null,
     );
   }
 }

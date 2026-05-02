@@ -23,20 +23,11 @@ class DefaultFirebaseOptions {
       case TargetPlatform.android:
         return android;
       case TargetPlatform.iOS:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for ios - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return ios;
       case TargetPlatform.macOS:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for macos - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return macos;
       case TargetPlatform.windows:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for windows - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return windows;
       case TargetPlatform.linux:
         throw UnsupportedError(
           'DefaultFirebaseOptions have not been configured for linux - '
@@ -65,4 +56,34 @@ class DefaultFirebaseOptions {
     projectId: 't1d-project-70bfa',
     storageBucket: 't1d-project-70bfa.firebasestorage.app',
   );
+
+  static const FirebaseOptions macos = FirebaseOptions(
+    apiKey: 'AIzaSyAXjvcOU5agkZ6YkYRzX8bObM8P5S65McA',
+    appId: '1:237332047836:ios:1ff996eb34467bacb29119',
+    messagingSenderId: '237332047836',
+    projectId: 't1d-project-70bfa',
+    storageBucket: 't1d-project-70bfa.firebasestorage.app',
+    iosClientId: '237332047836-3o1or63a41qtdmoqfqfdn42hio0l2q6n.apps.googleusercontent.com',
+    iosBundleId: 'com.example.myApp',
+  );
+
+  static const FirebaseOptions ios = FirebaseOptions(
+    apiKey: 'AIzaSyAXjvcOU5agkZ6YkYRzX8bObM8P5S65McA',
+    appId: '1:237332047836:ios:1ff996eb34467bacb29119',
+    messagingSenderId: '237332047836',
+    projectId: 't1d-project-70bfa',
+    storageBucket: 't1d-project-70bfa.firebasestorage.app',
+    iosClientId: '237332047836-3o1or63a41qtdmoqfqfdn42hio0l2q6n.apps.googleusercontent.com',
+    iosBundleId: 'com.example.myApp',
+  );
+
+  static const FirebaseOptions windows = FirebaseOptions(
+    apiKey: 'AIzaSyDkOBZwQ22B_d5AdJZidTL0va6EAnFRtn4',
+    appId: '1:237332047836:web:9d0d304d5ce8c752b29119',
+    messagingSenderId: '237332047836',
+    projectId: 't1d-project-70bfa',
+    authDomain: 't1d-project-70bfa.firebaseapp.com',
+    storageBucket: 't1d-project-70bfa.firebasestorage.app',
+  );
+
 }
