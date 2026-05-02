@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'services/onboarding_api.dart';
+import 'patient_screen.dart';
+import 'auth_screen.dart';
 
 class ParentOnboardingScreen extends StatefulWidget {
   final String userId;
@@ -11,7 +13,6 @@ class ParentOnboardingScreen extends StatefulWidget {
 }
 
 class _ParentOnboardingScreenState extends State<ParentOnboardingScreen> {
-  int currentStep = 0;
   bool isCheckingPatient = false;
   bool isSavingParent = false;
 
@@ -49,44 +50,91 @@ class _ParentOnboardingScreenState extends State<ParentOnboardingScreen> {
     return age;
   }
 
-  Future<void> _nextStep() async {
-    if (currentStep == 0) {
-      await _checkPatientAndContinue();
-      return;
+  List<String> _extractNameParts(String value) {
+    return value
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((part) => part.trim().isNotEmpty)
+        .toList();
+  }
+
+  bool _isValidFullName(String value) {
+    final parts = _extractNameParts(value);
+    return parts.length >= 4;
+  }
+
+  Future<void> _pickPatientBirthDate() async {
+    final now = DateTime.now();
+
+    DateTime initialDate = DateTime(2010);
+    if (patientBirthDateController.text.trim().isNotEmpty) {
+      try {
+        initialDate = DateTime.parse(patientBirthDateController.text.trim());
+      } catch (_) {}
     }
 
-    if (currentStep == 1) {
-      if (parentNameController.text.trim().isEmpty ||
-          parentPhoneController.text.trim().isEmpty) {
-        _showSnack("Please complete parent information");
-        return;
-      }
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: DateTime(1950),
+      lastDate: now,
+      helpText: 'Select Patient Date of Birth',
+    );
 
-      await _submitParentData();
+    if (picked != null) {
+      final formatted =
+          "${picked.year.toString().padLeft(4, '0')}-"
+          "${picked.month.toString().padLeft(2, '0')}-"
+          "${picked.day.toString().padLeft(2, '0')}";
+
+      setState(() {
+        patientBirthDateController.text = formatted;
+      });
     }
   }
 
-  void _previousStep() {
-    if (currentStep > 0) {
-      setState(() => currentStep--);
-    }
+  void _goToPatientSignUp() {
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(
+        builder: (_) =>
+            const AuthScreen(startInSignUp: true, forcedRole: 'patient'),
+      ),
+      (route) => false,
+    );
   }
 
-  Future<void> _checkPatientAndContinue() async {
+  void _goToPatientLogin() {
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(
+        builder: (_) =>
+            const AuthScreen(startInSignUp: false, forcedRole: 'patient'),
+      ),
+      (route) => false,
+    );
+  }
+
+  void _goToPatientHome(String userId) {
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => PatientHomeScreen(userId: userId)),
+      (route) => false,
+    );
+  }
+
+  Future<bool> _checkPatientOnly() async {
     final email = patientEmailController.text.trim();
     final birthText = patientBirthDateController.text.trim();
 
     if (email.isEmpty || birthText.isEmpty) {
       _showSnack("Please enter patient email and date of birth");
-      return;
+      return false;
     }
 
     DateTime? birthDate;
     try {
       birthDate = DateTime.parse(birthText);
     } catch (_) {
-      _showSnack("Birth date must be YYYY-MM-DD");
-      return;
+      _showSnack("Birth date must be valid");
+      return false;
     }
 
     final age = _calculateAge(birthDate);
@@ -107,21 +155,67 @@ class _ParentOnboardingScreenState extends State<ParentOnboardingScreen> {
         } else {
           _showSmallChildCreateAccountDialog();
         }
-        return;
+        return false;
       }
 
       if (!patientExists) {
         _showPatientNotFoundDialog();
-        return;
+        return false;
       }
 
       linkedPatientId = patient["_id"];
-      setState(() => currentStep = 1);
+      return true;
+    } catch (e) {
+      _showSnack(e.toString().replaceAll("Exception: ", ""));
+      return false;
+    } finally {
+      if (mounted) {
+        setState(() => isCheckingPatient = false);
+      }
+    }
+  }
+
+  Future<void> _submitAll() async {
+    if (parentNameController.text.trim().isEmpty ||
+        parentPhoneController.text.trim().isEmpty) {
+      _showSnack("Please complete parent information");
+      return;
+    }
+
+    if (!_isValidFullName(parentNameController.text)) {
+      _showSnack("Please enter the parent's full name as 4 names or more");
+      return;
+    }
+
+    final ok = await _checkPatientOnly();
+    if (!ok) return;
+
+    if (linkedPatientId == null) {
+      _showSnack("Linked patient not found");
+      return;
+    }
+
+    try {
+      setState(() => isSavingParent = true);
+
+      await OnboardingApi.saveParentProfile(
+        userId: widget.userId,
+        linkedPatientId: linkedPatientId!,
+        parentName: parentNameController.text.trim(),
+        relationship: relationship,
+        phone: parentPhoneController.text.trim(),
+      );
+
+      _showSnack("Parent profile saved successfully ✅");
+
+      if (!mounted) return;
+
+      _goToPatientHome(linkedPatientId!);
     } catch (e) {
       _showSnack(e.toString().replaceAll("Exception: ", ""));
     } finally {
       if (mounted) {
-        setState(() => isCheckingPatient = false);
+        setState(() => isSavingParent = false);
       }
     }
   }
@@ -132,13 +226,13 @@ class _ParentOnboardingScreenState extends State<ParentOnboardingScreen> {
       builder: (_) => AlertDialog(
         title: const Text("Use Patient Account"),
         content: const Text(
-          "Because your child is 12 years old or younger, you should continue using the patient account. Please log in using the patient account email and password.",
+          "Because your child is 12 years old or younger, please continue using the patient account login.",
         ),
         actions: [
           TextButton(
             onPressed: () {
               Navigator.pop(context);
-              Navigator.pop(context);
+              _goToPatientLogin();
             },
             child: const Text("Go to Patient Login"),
           ),
@@ -153,13 +247,13 @@ class _ParentOnboardingScreenState extends State<ParentOnboardingScreen> {
       builder: (_) => AlertDialog(
         title: const Text("Create Patient Account"),
         content: const Text(
-          "Because your child is 12 years old or younger, you need to create a patient account for your child first.",
+          "Because your child is 12 years old or younger, you need to create a patient account first.",
         ),
         actions: [
           TextButton(
             onPressed: () {
               Navigator.pop(context);
-              Navigator.pop(context);
+              _goToPatientSignUp();
             },
             child: const Text("Go to Patient Sign Up"),
           ),
@@ -180,78 +274,13 @@ class _ParentOnboardingScreenState extends State<ParentOnboardingScreen> {
           TextButton(
             onPressed: () {
               Navigator.pop(context);
-              Navigator.pop(context);
+              _goToPatientSignUp();
             },
             child: const Text("Go to Patient Sign Up"),
           ),
         ],
       ),
     );
-  }
-
-  Future<void> _submitParentData() async {
-    try {
-      if (linkedPatientId == null) {
-        _showSnack("Linked patient not found");
-        return;
-      }
-
-      setState(() => isSavingParent = true);
-
-      await OnboardingApi.saveParentProfile(
-        userId: widget.userId,
-        linkedPatientId: linkedPatientId!,
-        parentName: parentNameController.text.trim(),
-        relationship: relationship,
-        phone: parentPhoneController.text.trim(),
-      );
-
-      _showSnack("Parent profile saved successfully ✅");
-
-      if (!mounted) return;
-
-      // لاحقًا:
-      // Navigator.pushReplacement(...);
-    } catch (e) {
-      _showSnack(e.toString().replaceAll("Exception: ", ""));
-    } finally {
-      if (mounted) {
-        setState(() => isSavingParent = false);
-      }
-    }
-  }
-
-  String _stepTitle() {
-    switch (currentStep) {
-      case 0:
-        return "Patient Verification";
-      case 1:
-        return "Parent Information";
-      default:
-        return "";
-    }
-  }
-
-  String _stepImagePath() {
-    switch (currentStep) {
-      case 0:
-        return 'lib/assets/images/step_guardian.png';
-      case 1:
-        return 'lib/assets/images/step_guardian.png';
-      default:
-        return 'lib/assets/images/step_guardian.png';
-    }
-  }
-
-  Widget _buildCurrentStep() {
-    switch (currentStep) {
-      case 0:
-        return _patientVerificationStep();
-      case 1:
-        return _parentInfoStep();
-      default:
-        return const SizedBox.shrink();
-    }
   }
 
   @override
@@ -298,7 +327,7 @@ class _ParentOnboardingScreenState extends State<ParentOnboardingScreen> {
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.all(24),
                     child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 900),
+                      constraints: const BoxConstraints(maxWidth: 980),
                       child: Container(
                         padding: const EdgeInsets.all(28),
                         decoration: BoxDecoration(
@@ -312,35 +341,7 @@ class _ParentOnboardingScreenState extends State<ParentOnboardingScreen> {
                             ),
                           ],
                         ),
-                        child: LayoutBuilder(
-                          builder: (context, constraints) {
-                            final isWide = constraints.maxWidth >= 760;
-
-                            return isWide
-                                ? Row(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Expanded(
-                                        flex: 3,
-                                        child: _sideCharacterPanel(),
-                                      ),
-                                      const SizedBox(width: 28),
-                                      Expanded(
-                                        flex: 5,
-                                        child: _mainFormPanel(isBusy),
-                                      ),
-                                    ],
-                                  )
-                                : Column(
-                                    children: [
-                                      _topCharacterPanel(),
-                                      const SizedBox(height: 20),
-                                      _mainFormPanel(isBusy),
-                                    ],
-                                  );
-                          },
-                        ),
+                        child: _mainFormPanel(isBusy),
                       ),
                     ),
                   ),
@@ -353,144 +354,166 @@ class _ParentOnboardingScreenState extends State<ParentOnboardingScreen> {
     );
   }
 
-  Widget _sideCharacterPanel() {
-    return Column(
-      children: [
-        Container(
-          height: 220,
-          width: double.infinity,
-          decoration: BoxDecoration(
-            color: const Color(0xffF3FAFF),
-            borderRadius: BorderRadius.circular(22),
-          ),
-          child: Center(
-            child: Image.asset(
-              _stepImagePath(),
-              fit: BoxFit.contain,
-              errorBuilder: (context, error, stackTrace) => const Icon(
-                Icons.image_outlined,
-                size: 90,
-                color: Color(0xff90CAF9),
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-        Text(
-          _stepTitle(),
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
-            color: Color(0xff1565C0),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          "Step ${currentStep + 1} of 2",
-          textAlign: TextAlign.center,
-          style: const TextStyle(fontSize: 15, color: Colors.black54),
-        ),
-      ],
-    );
-  }
-
-  Widget _topCharacterPanel() {
-    return Column(
-      children: [
-        Container(
-          height: 140,
-          width: double.infinity,
-          decoration: BoxDecoration(
-            color: const Color(0xffF3FAFF),
-            borderRadius: BorderRadius.circular(22),
-          ),
-          child: Center(
-            child: Image.asset(
-              _stepImagePath(),
-              fit: BoxFit.contain,
-              errorBuilder: (_, __, ___) => const Icon(
-                Icons.image_outlined,
-                size: 70,
-                color: Color(0xff90CAF9),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
   Widget _mainFormPanel(bool isBusy) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          _stepTitle(),
-          style: const TextStyle(
+        const Text(
+          "Complete Family Information",
+          style: TextStyle(
             fontSize: 26,
             fontWeight: FontWeight.bold,
             color: Color(0xff1565C0),
           ),
         ),
         const SizedBox(height: 8),
-        Text(
-          "Step ${currentStep + 1} of 2",
-          style: const TextStyle(fontSize: 15, color: Colors.black54),
+        const Text(
+          "Verify the patient first, then complete parent information.",
+          style: TextStyle(fontSize: 15, color: Colors.black54),
         ),
         const SizedBox(height: 24),
-        _buildCurrentStep(),
+
+        _sectionBlock(
+          title: "Patient Verification",
+          imagePath: 'lib/assets/images/step_guardian.png',
+          child: _patientVerificationSection(),
+        ),
+        const SizedBox(height: 24),
+
+        _sectionBlock(
+          title: "Parent Information",
+          imagePath: 'lib/assets/images/step_guardian.png',
+          child: _parentInfoSection(),
+        ),
         const SizedBox(height: 28),
-        Row(
-          children: [
-            if (currentStep > 0)
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: isBusy ? null : _previousStep,
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(54),
-                    side: const BorderSide(color: Color(0xff8E8E8E)),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                  child: const Text("Previous", style: TextStyle(fontSize: 17)),
-                ),
-              ),
-            if (currentStep > 0) const SizedBox(width: 12),
-            Expanded(
-              child: ElevatedButton(
-                onPressed: isBusy ? null : _nextStep,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xff42A5F5),
-                  foregroundColor: Colors.white,
-                  minimumSize: const Size.fromHeight(54),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                ),
-                child: Text(
-                  isCheckingPatient
-                      ? "Checking..."
-                      : isSavingParent
-                      ? "Saving..."
-                      : currentStep == 1
-                      ? "Finish"
-                      : "Next",
-                  style: const TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
+
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: isBusy ? null : _submitAll,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xff42A5F5),
+              foregroundColor: Colors.white,
+              minimumSize: const Size.fromHeight(56),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
               ),
             ),
-          ],
+            child: Text(
+              isCheckingPatient
+                  ? "Checking..."
+                  : isSavingParent
+                  ? "Saving..."
+                  : "Submit",
+              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+            ),
+          ),
         ),
       ],
     );
   }
 
-  Widget _patientVerificationStep() {
+  Widget _sectionBlock({
+    required String title,
+    required String imagePath,
+    required Widget child,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xffF9FCFF),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xffD7EBFF)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isWide = constraints.maxWidth >= 640;
+
+              if (isWide) {
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 120,
+                      height: 120,
+                      decoration: BoxDecoration(
+                        color: const Color(0xffF3FAFF),
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: Center(
+                        child: Image.asset(
+                          imagePath,
+                          fit: BoxFit.contain,
+                          errorBuilder: (_, __, ___) => const Icon(
+                            Icons.image_outlined,
+                            size: 54,
+                            color: Color(0xff90CAF9),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 18),
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xff1565C0),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              }
+
+              return Column(
+                children: [
+                  Container(
+                    height: 120,
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: const Color(0xffF3FAFF),
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: Center(
+                      child: Image.asset(
+                        imagePath,
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, __, ___) => const Icon(
+                          Icons.image_outlined,
+                          size: 54,
+                          color: Color(0xff90CAF9),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    title,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xff1565C0),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 18),
+          child,
+        ],
+      ),
+    );
+  }
+
+  Widget _patientVerificationSection() {
     return Column(
       children: [
         _textField(
@@ -499,23 +522,44 @@ class _ParentOnboardingScreenState extends State<ParentOnboardingScreen> {
           icon: Icons.email_outlined,
         ),
         const SizedBox(height: 14),
-        _textField(
+        TextField(
           controller: patientBirthDateController,
-          label: "Patient Date of Birth (YYYY-MM-DD)",
-          icon: Icons.cake_outlined,
-          hint: "Example: 2010-05-12",
+          readOnly: true,
+          onTap: _pickPatientBirthDate,
+          decoration:
+              _inputDecoration(
+                label: "Patient Date of Birth",
+                icon: Icons.cake_outlined,
+                hint: "Select patient date of birth",
+              ).copyWith(
+                suffixIcon: IconButton(
+                  onPressed: _pickPatientBirthDate,
+                  icon: const Icon(Icons.calendar_month_outlined),
+                ),
+              ),
         ),
       ],
     );
   }
 
-  Widget _parentInfoStep() {
+  Widget _parentInfoSection() {
     return Column(
       children: [
-        _textField(
+        TextField(
           controller: parentNameController,
-          label: "Parent Name",
-          icon: Icons.person_outline,
+          decoration: _inputDecoration(
+            label: "Parent Full Name",
+            icon: Icons.person_outline,
+            hint: "Enter full name (4 names or more)",
+          ),
+        ),
+        const SizedBox(height: 8),
+        const Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            "The full name must contain at least 4 names",
+            style: TextStyle(fontSize: 12, color: Colors.black54),
+          ),
         ),
         const SizedBox(height: 14),
         DropdownButtonFormField<String>(

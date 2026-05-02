@@ -8,19 +8,24 @@ import 'patient_onboarding_screen.dart';
 import 'parent_onboarding_screen.dart';
 import 'doctor_onboarding_screen.dart';
 import 'nutritionist_onboarding_screen.dart';
+import 'services/firebase_notification_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthScreen extends StatefulWidget {
-  const AuthScreen({super.key});
+  final bool startInSignUp;
+  final String? forcedRole;
+
+  const AuthScreen({super.key, this.startInSignUp = false, this.forcedRole});
 
   @override
   State<AuthScreen> createState() => _AuthScreenState();
 }
 
 class _AuthScreenState extends State<AuthScreen> {
-  bool isSignIn = true;
+  late bool isSignIn;
 
   // Shared
-  String selectedRole = "patient";
+  late String selectedRole;
   bool hidePassword = true;
   bool hideConfirmPassword = true;
   bool isLoading = false;
@@ -58,6 +63,13 @@ class _AuthScreenState extends State<AuthScreen> {
   final signUpPassword = TextEditingController();
   final confirmPassword = TextEditingController();
   final dateOfBirth = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    isSignIn = !widget.startInSignUp;
+    selectedRole = widget.forcedRole ?? "patient";
+  }
 
   @override
   void dispose() {
@@ -254,13 +266,32 @@ class _AuthScreenState extends State<AuthScreen> {
     try {
       final loginData = await AuthApi.login(email: email, password: password);
 
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (context) =>
-              PatientHomeScreen(userId: loginData['user']['_id']),
-        ),
-      );
+      final user = loginData['user'];
+      final userId = user['_id'].toString();
+      final role = user['role'].toString();
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('userId', userId);
+      await prefs.setString('role', role);
+
+      try {
+        await FirebaseNotificationService.saveUserToken(userId);
+      } catch (e) {
+        debugPrint('saveUserToken failed: $e');
+      }
+
+      if (!mounted) return;
+
+      if (role == 'patient') {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => PatientHomeScreen(userId: userId),
+          ),
+        );
+      } else {
+        _snack("This role home page is not linked yet");
+      }
     } catch (e) {
       setState(() {
         signInGeneralError = "Invalid email or password";
@@ -306,18 +337,36 @@ class _AuthScreenState extends State<AuthScreen> {
 
       final result = await AuthApi.checkGoogleUser(email);
 
-      if (result['exists'] == true) {
+      if (result['exists'] == true && result['user'] != null) {
+        final userData = result['user'];
+
+        final userId = userData['_id'].toString();
+        final role = (userData['role'] ?? 'patient').toString();
+
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('userId', userId);
+        await prefs.setString('role', role);
+
+        try {
+          await FirebaseNotificationService.saveUserToken(userId);
+        } catch (e) {
+          debugPrint('saveUserToken failed: $e');
+        }
+
+        if (!mounted) return;
+
         _snack("Welcome back ${user.displayName ?? ''}");
-        debugPrint(result.toString());
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) =>
-                PatientHomeScreen(userId: result['user']['_id']),
-          ),
-        );
-        // هون لاحقًا:
-        // Navigator.pushReplacement(... home page ...)
+
+        if (role == 'patient') {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => PatientHomeScreen(userId: userId),
+            ),
+          );
+        } else {
+          _snack("This role home page is not linked yet");
+        }
       } else {
         firstName.text = googleFirstName;
         lastName.text = googleLastName;
@@ -770,10 +819,12 @@ class _AuthScreenState extends State<AuthScreen> {
         DropdownMenuItem(value: "nutritionist", child: Text("🥗 Nutritionist")),
         DropdownMenuItem(value: "family", child: Text("👨‍👩‍👧 Family")),
       ],
-      onChanged: (value) {
-        if (value == null) return;
-        setState(() => selectedRole = value);
-      },
+      onChanged: widget.forcedRole != null
+          ? null
+          : (value) {
+              if (value == null) return;
+              setState(() => selectedRole = value);
+            },
     );
   }
 
