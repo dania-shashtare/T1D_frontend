@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 import 'food_product.dart';
+import 'services/meal_api.dart';
 
 class BarcodeProductResultScreen extends StatefulWidget {
   final String mealTitle;
@@ -26,9 +29,54 @@ class _BarcodeProductResultScreenState
   int? suggestedInsulin;
   double enteredGrams = 0.0;
   bool hasCalculated = false;
+  bool isSaving = false;
+
+  @override
+  void dispose() {
+    gramsController.dispose();
+    super.dispose();
+  }
+
+  String _mealTypeFromTitle(String mealTitle) {
+    switch (mealTitle) {
+      case 'Breakfast':
+        return 'breakfast';
+      case 'Morning Snack':
+        return 'morningSnack';
+      case 'Lunch':
+        return 'lunch';
+      case 'Afternoon Snack':
+        return 'eveningSnack';
+      case 'Dinner':
+        return 'dinner';
+      default:
+        return 'breakfast';
+    }
+  }
+
+  Future<String> _getCurrentUserId() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userId = prefs.getString('userId');
+
+    if (userId == null || userId.trim().isEmpty) {
+      throw Exception('User ID not found. Please login again.');
+    }
+
+    return userId.trim();
+  }
 
   void calculateValues() {
-    final grams = double.tryParse(gramsController.text) ?? 0.0;
+    final grams = double.tryParse(gramsController.text.trim()) ?? 0.0;
+
+    if (grams <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter a valid amount in grams.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
 
     setState(() {
       hasCalculated = true;
@@ -41,6 +89,71 @@ class _BarcodeProductResultScreenState
         suggestedInsulin = null;
       }
     });
+  }
+
+  Future<void> _saveBarcodeMeal() async {
+    if (!hasCalculated || enteredGrams <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Calculate the meal first.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    setState(() => isSaving = true);
+
+    try {
+      final userId = await _getCurrentUserId();
+      final mealType = _mealTypeFromTitle(widget.mealTitle);
+
+      final meal = {
+        'mealType': mealType,
+        'mealName': widget.product.name,
+        'servingSize': '${enteredGrams.toStringAsFixed(0)}g',
+        'ingredients': [
+          {
+            'name': widget.product.name,
+            'quantity': enteredGrams,
+            'unit': 'g',
+            'gramsUsed': enteredGrams,
+            'carbs': double.parse(totalCarbs.toStringAsFixed(1)),
+            'source': 'database',
+          },
+        ],
+        'totalCarbs': double.parse(totalCarbs.toStringAsFixed(1)),
+        'carbRatio': widget.carbRatio,
+        'insulinUnits': suggestedInsulin,
+        'insulinMessage': suggestedInsulin == null
+            ? 'No carb ratio found. Please consult your doctor.'
+            : '',
+      };
+
+      final result = await MealApi.saveMeal(userId: userId, meal: meal);
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result['message'] ?? 'Meal saved successfully'),
+          backgroundColor: const Color(0xff17466E),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Save failed: $e'),
+          backgroundColor: Colors.red.shade800,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => isSaving = false);
+      }
+    }
   }
 
   @override
@@ -97,10 +210,10 @@ class _BarcodeProductResultScreenState
                                         fit: BoxFit.contain,
                                         errorBuilder: (_, __, ___) =>
                                             const Icon(
-                                          Icons.fastfood_rounded,
-                                          size: 70,
-                                          color: Colors.white,
-                                        ),
+                                              Icons.fastfood_rounded,
+                                              size: 70,
+                                              color: Colors.white,
+                                            ),
                                       ),
                                     )
                                   : const Icon(
@@ -232,10 +345,7 @@ class _BarcodeProductResultScreenState
                     const SizedBox(height: 6),
                     const Text(
                       "Enter grams, then press calculate",
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Color(0xff7A9AB5),
-                      ),
+                      style: TextStyle(fontSize: 14, color: Color(0xff7A9AB5)),
                     ),
                     const SizedBox(height: 14),
                     TextField(
@@ -312,16 +422,14 @@ class _BarcodeProductResultScreenState
                               Expanded(
                                 child: _resultBox(
                                   title: "Grams",
-                                  value:
-                                      "${enteredGrams.toStringAsFixed(0)} g",
+                                  value: "${enteredGrams.toStringAsFixed(0)} g",
                                 ),
                               ),
                               const SizedBox(width: 12),
                               Expanded(
                                 child: _resultBox(
                                   title: "Carbs",
-                                  value:
-                                      "${totalCarbs.toStringAsFixed(1)} g",
+                                  value: "${totalCarbs.toStringAsFixed(1)} g",
                                 ),
                               ),
                             ],
@@ -345,6 +453,41 @@ class _BarcodeProductResultScreenState
                         ],
                       ),
                     ),
+                    if (hasCalculated) ...[
+                      const SizedBox(height: 14),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: isSaving ? null : _saveBarcodeMeal,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xff17466E),
+                            foregroundColor: Colors.white,
+                            disabledBackgroundColor: const Color(0xff9BB7CF),
+                            elevation: 0,
+                            padding: const EdgeInsets.symmetric(vertical: 17),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                          ),
+                          child: isSaving
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Text(
+                                  "Save meal to database",
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 17,
+                                  ),
+                                ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -367,8 +510,9 @@ class _BarcodeProductResultScreenState
               label,
               style: TextStyle(
                 fontSize: 15,
-                color:
-                    isDark ? const Color(0xffCFE4FF) : const Color(0xff7A9AB5),
+                color: isDark
+                    ? const Color(0xffCFE4FF)
+                    : const Color(0xff7A9AB5),
                 fontWeight: FontWeight.w600,
               ),
             ),
