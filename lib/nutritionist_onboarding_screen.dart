@@ -507,6 +507,7 @@ class _NutritionistOnboardingScreenState
         const SizedBox(height: 14),
         DropdownButtonFormField<String>(
           value: specialty,
+          isExpanded: true,
           decoration: _inputDecoration(
             label: "Specialty",
             icon: Icons.badge_outlined,
@@ -584,6 +585,7 @@ class _NutritionistOnboardingScreenState
         const SizedBox(height: 18),
         DropdownButtonFormField<String>(
           value: hasType1Experience,
+          isExpanded: true,
           decoration: _inputDecoration(
             label: "Do you have experience with Type 1 Diabetes patients?",
             icon: Icons.monitor_heart_outlined,
@@ -600,6 +602,7 @@ class _NutritionistOnboardingScreenState
         const SizedBox(height: 18),
         DropdownButtonFormField<String>(
           value: planningStyle,
+          isExpanded: true,
           decoration: _inputDecoration(
             label: "How do you usually build meal plans?",
             icon: Icons.restaurant_menu_outlined,

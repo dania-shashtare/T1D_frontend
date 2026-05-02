@@ -494,6 +494,7 @@ class _DoctorOnboardingScreenState extends State<DoctorOnboardingScreen> {
         const SizedBox(height: 14),
         DropdownButtonFormField<String>(
           value: specialty,
+          isExpanded: true,
           decoration: _inputDecoration(
             label: "Specialty",
             icon: Icons.badge_outlined,
@@ -571,6 +572,7 @@ class _DoctorOnboardingScreenState extends State<DoctorOnboardingScreen> {
         const SizedBox(height: 18),
         DropdownButtonFormField<String>(
           value: treatsType1,
+          isExpanded: true,
           decoration: _inputDecoration(
             label: "Do you treat Type 1 Diabetes patients?",
             icon: Icons.monitor_heart_outlined,

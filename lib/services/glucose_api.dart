@@ -5,7 +5,7 @@ class GlucoseApi {
   //static const String baseUrl = 'http://localhost:5000/api/glucose';
 
   // If you run on Android Emulator, use this instead:
-  static const String baseUrl = "http://10.0.2.2:5000/api/glucose";
+  static const String baseUrl = 'http://10.0.2.2:5000/api/glucose';
 
   static Future<List<Map<String, dynamic>>> getReadings(String userId) async {
     final url = Uri.parse('$baseUrl/$userId');

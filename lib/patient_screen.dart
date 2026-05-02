@@ -1418,11 +1418,16 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
                 _showMainMenu();
                 return;
               }
+
               if (item['label'] == 'Reports') {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (_) => ReportsScreen(userId: widget.userId),
+                  ),
+                );
+                return;
+              }
 
               if (item['label'] == 'Meals') {
                 Navigator.push(
@@ -1778,17 +1783,20 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
                                   ActivityScreen(userId: widget.userId),
                             ),
                           );
-                        Navigator.pop(context);
+                          return;
+                        }
 
-                        if (menuItems[i]['label'] == 'Chat / Ask anything') {
+                        if (label == 'Chat / Ask anything') {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
                               builder: (context) => const ChatScreen(),
                             ),
                           );
+                          return;
                         }
-                        if (menuItems[i]['label'] == 'Water') {
+
+                        if (label == 'Water') {
                           Navigator.push(
                             context,
                             MaterialPageRoute(

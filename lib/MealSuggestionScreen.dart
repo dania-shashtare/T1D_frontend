@@ -8,16 +8,10 @@ class Ingredient {
   final String name;
   final String quantity;
 
-  Ingredient({
-    required this.name,
-    required this.quantity,
-  });
+  Ingredient({required this.name, required this.quantity});
 
   factory Ingredient.fromJson(Map<String, dynamic> j) {
-    return Ingredient(
-      name: j['name'] ?? '',
-      quantity: j['quantity'] ?? '',
-    );
+    return Ingredient(name: j['name'] ?? '', quantity: j['quantity'] ?? '');
   }
 }
 
@@ -71,7 +65,8 @@ const String _pexelsKey =
 // إذا بتجربي على Chrome خليه localhost.
 // إذا Android Emulator استخدمي: http://10.0.2.2:5000
 // إذا موبايل حقيقي استخدمي IP اللابتوب مثل: http://192.168.1.5:5000
-const String _baseUrl = 'http://localhost:5000';
+//const String _baseUrl = 'http://localhost:5000';
+const String _baseUrl = 'http://10.0.2.2:5000';
 
 const _blue900 = Color(0xFF042C53);
 const _blue800 = Color(0xFF0C447C);
@@ -114,9 +109,7 @@ class _MealSuggestionScreenState extends State<MealSuggestionScreen> {
         Uri.parse(
           'https://api.pexels.com/v1/search?query=$q&per_page=1&orientation=square',
         ),
-        headers: {
-          'Authorization': _pexelsKey,
-        },
+        headers: {'Authorization': _pexelsKey},
       );
 
       if (res.statusCode == 200) {
@@ -145,9 +138,7 @@ class _MealSuggestionScreenState extends State<MealSuggestionScreen> {
     try {
       final res = await http.post(
         Uri.parse('$_baseUrl/api/ai/suggest-meals'),
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'userId': widget.userId,
           'mealType': widget.mealType,
@@ -161,8 +152,9 @@ class _MealSuggestionScreenState extends State<MealSuggestionScreen> {
 
       final parsed = jsonDecode(res.body);
 
-      final meals =
-          (parsed['meals'] as List).map((m) => Meal.fromJson(m)).toList();
+      final meals = (parsed['meals'] as List)
+          .map((m) => Meal.fromJson(m))
+          .toList();
 
       final List<String> imageUrls = await Future.wait(
         meals.map((m) => _fetchPexelsImage(m.imageQuery)),
@@ -229,10 +221,7 @@ class _MealSuggestionScreenState extends State<MealSuggestionScreen> {
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(
-            horizontal: 20,
-            vertical: 12,
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -242,10 +231,7 @@ class _MealSuggestionScreenState extends State<MealSuggestionScreen> {
                     child: TextField(
                       controller: _queryCtrl,
                       onSubmitted: (_) => _suggest(),
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: _blue900,
-                      ),
+                      style: const TextStyle(fontSize: 14, color: _blue900),
                       decoration: InputDecoration(
                         hintText:
                             'e.g. high blood sugar 200, prefer warm food...',
@@ -334,17 +320,11 @@ class _MealSuggestionScreenState extends State<MealSuggestionScreen> {
                   width: double.infinity,
                   child: OutlinedButton.icon(
                     onPressed: _loading ? null : _suggest,
-                    icon: const Icon(
-                      Icons.refresh_rounded,
-                      size: 16,
-                    ),
+                    icon: const Icon(Icons.refresh_rounded, size: 16),
                     label: const Text('More suggestions'),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: _blue600,
-                      side: const BorderSide(
-                        color: _blue100,
-                        width: 1,
-                      ),
+                      side: const BorderSide(color: _blue100, width: 1),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -466,11 +446,7 @@ class _MealCard extends StatelessWidget {
                           bg: _amber50,
                           fg: _amber800,
                         ),
-                        _Pill(
-                          label: insulinText,
-                          bg: _blue50,
-                          fg: _blue800,
-                        ),
+                        _Pill(label: insulinText, bg: _blue50, fg: _blue800),
                       ],
                     ),
                   ],
@@ -488,10 +464,7 @@ class _ParsedQuantity {
   final double quantity;
   final String unit;
 
-  const _ParsedQuantity({
-    required this.quantity,
-    required this.unit,
-  });
+  const _ParsedQuantity({required this.quantity, required this.unit});
 }
 
 class _DetailSheet extends StatefulWidget {
@@ -559,10 +532,7 @@ class _DetailSheetState extends State<_DetailSheet> {
       );
     }
 
-    return _ParsedQuantity(
-      quantity: 1,
-      unit: text,
-    );
+    return _ParsedQuantity(quantity: 1, unit: text);
   }
 
   List<Map<String, dynamic>> _buildIngredientsForSave() {
@@ -608,10 +578,7 @@ class _DetailSheetState extends State<_DetailSheet> {
         'insulinMessage': widget.meal.insulinNote,
       };
 
-      final result = await MealApi.saveMeal(
-        userId: widget.userId,
-        meal: meal,
-      );
+      final result = await MealApi.saveMeal(userId: widget.userId, meal: meal);
 
       if (!mounted) return;
 
@@ -654,9 +621,7 @@ class _DetailSheetState extends State<_DetailSheet> {
         return Container(
           decoration: const BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.vertical(
-              top: Radius.circular(24),
-            ),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
           ),
           child: SingleChildScrollView(
             controller: scrollCtrl,
@@ -665,10 +630,7 @@ class _DetailSheetState extends State<_DetailSheet> {
               children: [
                 Center(
                   child: Container(
-                    margin: const EdgeInsets.only(
-                      top: 12,
-                      bottom: 8,
-                    ),
+                    margin: const EdgeInsets.only(top: 12, bottom: 8),
                     width: 40,
                     height: 4,
                     decoration: BoxDecoration(
@@ -821,10 +783,7 @@ class _DetailSheetState extends State<_DetailSheet> {
                         }).toList(),
                       ),
                       const SizedBox(height: 20),
-                      const Divider(
-                        color: _blue100,
-                        thickness: 0.5,
-                      ),
+                      const Divider(color: _blue100, thickness: 0.5),
                       const SizedBox(height: 16),
                       const _SectionLabel(label: 'Preparation'),
                       const SizedBox(height: 10),
@@ -878,10 +837,7 @@ class _DetailSheetState extends State<_DetailSheet> {
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text(
-                              '💉 ',
-                              style: TextStyle(fontSize: 16),
-                            ),
+                            const Text('💉 ', style: TextStyle(fontSize: 16)),
                             Expanded(
                               child: RichText(
                                 text: TextSpan(
@@ -928,9 +884,7 @@ class _DetailSheetState extends State<_DetailSheet> {
                                   size: 18,
                                 ),
                           label: Text(
-                            _isSaving
-                                ? 'Saving...'
-                                : 'Save selected meal',
+                            _isSaving ? 'Saving...' : 'Save selected meal',
                             style: const TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
@@ -977,10 +931,7 @@ class _ToggleChip extends StatelessWidget {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(
-          horizontal: 14,
-          vertical: 7,
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
         decoration: BoxDecoration(
           color: active ? _blue50 : Colors.white,
           borderRadius: BorderRadius.circular(20),
@@ -1007,30 +958,19 @@ class _Pill extends StatelessWidget {
   final Color bg;
   final Color fg;
 
-  const _Pill({
-    required this.label,
-    required this.bg,
-    required this.fg,
-  });
+  const _Pill({required this.label, required this.bg, required this.fg});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 7,
-        vertical: 3,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(10),
       ),
       child: Text(
         label,
-        style: TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.w600,
-          color: fg,
-        ),
+        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: fg),
       ),
     );
   }
@@ -1069,13 +1009,7 @@ class _StatBox extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 2),
-            Text(
-              label,
-              style: const TextStyle(
-                fontSize: 10,
-                color: _blue600,
-              ),
-            ),
+            Text(label, style: const TextStyle(fontSize: 10, color: _blue600)),
           ],
         ),
       ),
@@ -1086,9 +1020,7 @@ class _StatBox extends StatelessWidget {
 class _SectionLabel extends StatelessWidget {
   final String label;
 
-  const _SectionLabel({
-    required this.label,
-  });
+  const _SectionLabel({required this.label});
 
   @override
   Widget build(BuildContext context) {
@@ -1114,17 +1046,11 @@ class _LoadingWidget extends StatelessWidget {
       child: Center(
         child: Column(
           children: [
-            CircularProgressIndicator(
-              color: _blue400,
-              strokeWidth: 2,
-            ),
+            CircularProgressIndicator(color: _blue400, strokeWidth: 2),
             SizedBox(height: 12),
             Text(
               'Finding meals for you...',
-              style: TextStyle(
-                fontSize: 13,
-                color: _blue600,
-              ),
+              style: TextStyle(fontSize: 13, color: _blue600),
             ),
           ],
         ),
@@ -1136,9 +1062,7 @@ class _LoadingWidget extends StatelessWidget {
 class _ErrorWidget extends StatelessWidget {
   final String message;
 
-  const _ErrorWidget({
-    required this.message,
-  });
+  const _ErrorWidget({required this.message});
 
   @override
   Widget build(BuildContext context) {
@@ -1151,10 +1075,7 @@ class _ErrorWidget extends StatelessWidget {
       ),
       child: Text(
         message,
-        style: const TextStyle(
-          fontSize: 13,
-          color: Color(0xFFA32D2D),
-        ),
+        style: const TextStyle(fontSize: 13, color: Color(0xFFA32D2D)),
       ),
     );
   }
