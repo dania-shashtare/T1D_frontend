@@ -105,6 +105,9 @@ flutter:
     - lib/assets/images/toast.png
     - lib/assets/images/raisins.png
     - lib/assets/images/mascot_high.png
+    - lib/assets/images/water_sad.png
+    - lib/assets/images/water_normal.png
+    - lib/assets/images/water_happy.png
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in

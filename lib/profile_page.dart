@@ -12,21 +12,27 @@ class ProfilePage extends StatefulWidget {
 }
 
 class _ProfilePageState extends State<ProfilePage> {
-  bool _isEditing = false;
   bool _isLoading = true;
-  String? _errorMessage;
+  bool _isEditing = false;
+  bool _isSaving = false;
 
-  final _nameController = TextEditingController();
-  final _ageController = TextEditingController();
-  final _weightController = TextEditingController();
-  final _heightController = TextEditingController();
-  final _doctorController = TextEditingController();
-  final _specialtyController = TextEditingController();
+  String? _errorMessage;
+  ProfileModel? profile;
+
+  final TextEditingController _weightController = TextEditingController();
+  final TextEditingController _heightController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _loadProfile();
+  }
+
+  @override
+  void dispose() {
+    _weightController.dispose();
+    _heightController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadProfile() async {
@@ -42,83 +48,126 @@ class _ProfilePageState extends State<ProfilePage> {
         return;
       }
 
-      final ProfileModel profile = await ProfileApi.getProfile(userId);
-
-      _nameController.text = profile.fullName;
-      _ageController.text = profile.age?.toString() ?? '';
-      _weightController.text = profile.weight?.toString() ?? '';
-      _heightController.text = profile.height?.toString() ?? '';
-      _doctorController.text = profile.doctorName;
-      _specialtyController.text = profile.doctorSpecialty;
+      final data = await ProfileApi.getProfile(userId);
 
       setState(() {
+        profile = data;
+        _weightController.text = data.weight?.toString() ?? '';
+        _heightController.text = data.height?.toString() ?? '';
         _isLoading = false;
         _errorMessage = null;
       });
     } catch (e) {
-      print('Profile load error: $e');
       setState(() {
         _isLoading = false;
-        _errorMessage = 'Failed to load profile data: $e';
+        _errorMessage = 'Failed to load profile data';
       });
     }
   }
 
-  @override
-  void dispose() {
-    _nameController.dispose();
-    _ageController.dispose();
-    _weightController.dispose();
-    _heightController.dispose();
-    _doctorController.dispose();
-    _specialtyController.dispose();
-    super.dispose();
+  Future<void> _saveProfile() async {
+    final weight = double.tryParse(_weightController.text.trim());
+    final height = double.tryParse(_heightController.text.trim());
+
+    if (weight == null || height == null || weight <= 0 || height <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter valid weight and height')),
+      );
+      return;
+    }
+
+    try {
+      setState(() => _isSaving = true);
+
+      final prefs = await SharedPreferences.getInstance();
+      final userId = prefs.getString('userId');
+
+      if (userId == null || userId.isEmpty) {
+        throw Exception('No logged-in user found');
+      }
+
+      await ProfileApi.updateProfile(
+        userId: userId,
+        weight: weight,
+        height: height,
+      );
+
+      await _loadProfile();
+
+      setState(() {
+        _isEditing = false;
+        _isSaving = false;
+      });
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Profile updated successfully')),
+      );
+    } catch (e) {
+      setState(() => _isSaving = false);
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to update profile: $e')));
+    }
   }
 
-  void _toggleEdit() {
-    setState(() {
-      _isEditing = !_isEditing;
-    });
+  double? _calculateBmi() {
+    final weight = _isEditing
+        ? double.tryParse(_weightController.text.trim())
+        : profile?.weight;
+
+    final height = _isEditing
+        ? double.tryParse(_heightController.text.trim())
+        : profile?.height;
+
+    if (weight == null || height == null) return null;
+    final heightM = height / 100;
+    if (heightM <= 0) return null;
+
+    return weight / (heightM * heightM);
+  }
+
+  String _value(dynamic value, {String suffix = ''}) {
+    if (value == null) return 'Not set';
+    final text = value.toString();
+    if (text.trim().isEmpty) return 'Not set';
+    return suffix.isEmpty ? text : '$text $suffix';
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF0F4F8),
+      backgroundColor: const Color(0xFFF3F7FB),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _errorMessage != null
           ? Center(
               child: Text(
                 _errorMessage!,
-                style: const TextStyle(
-                  fontSize: 16,
-                  color: Colors.red,
-                  fontWeight: FontWeight.w500,
-                ),
+                style: const TextStyle(color: Colors.red, fontSize: 16),
               ),
             )
           : Column(
               children: [
                 _buildHeader(),
-                _buildAvatar(),
                 Expanded(
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.only(top: 16, bottom: 40),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _buildPersonalInfoCard(),
-                          const SizedBox(height: 16),
-                          _buildSectionLabel('Doctor'),
-                          const SizedBox(height: 8),
-                          _buildDoctorCard(),
-                          const SizedBox(height: 24),
-                          _buildLogoutButton(),
-                        ],
-                      ),
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      children: [
+                        _buildUserCard(),
+                        const SizedBox(height: 16),
+                        _buildPersonalInfoCard(),
+                        const SizedBox(height: 16),
+                        _buildDiabetesCard(),
+                        const SizedBox(height: 16),
+                        _buildAllergyCard(),
+                        const SizedBox(height: 16),
+                        _buildDoctorCard(),
+                        const SizedBox(height: 24),
+                        _buildLogoutButton(),
+                      ],
                     ),
                   ),
                 ),
@@ -129,49 +178,69 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Widget _buildHeader() {
     return Container(
-      color: const Color(0xFF1A4A8A),
+      width: double.infinity,
       padding: EdgeInsets.only(
         top: MediaQuery.of(context).padding.top + 16,
-        bottom: 20,
         left: 16,
         right: 16,
+        bottom: 22,
+      ),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Color(0xFF1A73B8), Color(0xFF63B8F2)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
       ),
       child: Row(
         children: [
-          GestureDetector(
-            onTap: () => Navigator.maybePop(context),
-            child: const Icon(Icons.arrow_back, color: Colors.white, size: 22),
+          IconButton(
+            onPressed: () => Navigator.maybePop(context),
+            icon: const Icon(Icons.arrow_back, color: Colors.white),
           ),
-          const SizedBox(width: 12),
           const Expanded(
             child: Text(
               'Profile',
+              textAlign: TextAlign.center,
               style: TextStyle(
                 color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w500,
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
               ),
             ),
           ),
           GestureDetector(
-            onTap: _toggleEdit,
+            onTap: _isSaving
+                ? null
+                : () async {
+                    if (_isEditing) {
+                      await _saveProfile();
+                    } else {
+                      setState(() => _isEditing = true);
+                    }
+                  },
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
               decoration: BoxDecoration(
                 color: _isEditing ? Colors.white : Colors.transparent,
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: Colors.white.withOpacity(_isEditing ? 1.0 : 0.5),
-                ),
+                border: Border.all(color: Colors.white),
               ),
-              child: Text(
-                _isEditing ? 'Save' : 'Edit',
-                style: TextStyle(
-                  color: _isEditing ? const Color(0xFF1A4A8A) : Colors.white,
-                  fontSize: 13,
-                  fontWeight: _isEditing ? FontWeight.w600 : FontWeight.normal,
-                ),
-              ),
+              child: _isSaving
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Text(
+                      _isEditing ? 'Save' : 'Edit',
+                      style: TextStyle(
+                        color: _isEditing
+                            ? const Color(0xFF1A73B8)
+                            : Colors.white,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
             ),
           ),
         ],
@@ -179,335 +248,305 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  Widget _buildAvatar() {
+  Widget _buildUserCard() {
+    final name = profile?.fullName.isNotEmpty == true
+        ? profile!.fullName
+        : 'Patient Profile';
+
     return Container(
-      color: const Color(0xFF1A4A8A),
       width: double.infinity,
-      padding: const EdgeInsets.only(bottom: 20),
-      child: Center(
-        child: Text(
-          _nameController.text.isNotEmpty ? _nameController.text : 'Profile',
-          style: const TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w500,
-            color: Colors.white,
+      padding: const EdgeInsets.all(20),
+      decoration: _cardDecoration(),
+      child: Column(
+        children: [
+          CircleAvatar(
+            radius: 42,
+            backgroundColor: const Color(0xFFE4F3FF),
+            child: Text(
+              name[0].toUpperCase(),
+              style: const TextStyle(
+                fontSize: 34,
+                color: Color(0xFF1A73B8),
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
-        ),
+          const SizedBox(height: 12),
+          Text(
+            name,
+            style: const TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF123B63),
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Type 1 Diabetes Patient',
+            style: TextStyle(color: Colors.grey, fontSize: 14),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildPersonalInfoCard() {
-    return _buildCard(
-      label: 'Personal Information',
+    final bmi = _calculateBmi();
+
+    return _buildSectionCard(
+      title: 'Personal Information',
+      icon: Icons.person_outline,
       children: [
-        _buildField(
-          icon: Icons.person_outline,
-          iconBg: const Color(0xFFE6F1FB),
-          iconColor: const Color(0xFF185FA5),
-          label: 'Full Name',
-          controller: _nameController,
-          keyboardType: TextInputType.name,
+        _buildInfoRow(
+          Icons.cake_outlined,
+          'Age',
+          _value(profile?.age, suffix: 'years'),
         ),
-        _buildField(
-          icon: Icons.calendar_today_outlined,
-          iconBg: const Color(0xFFFAEEDA),
-          iconColor: const Color(0xFFBA7517),
-          label: 'Age',
-          controller: _ageController,
-          suffix: 'years',
-          keyboardType: TextInputType.number,
+        _buildEditableInfoRow(
+          Icons.monitor_weight_outlined,
+          'Weight',
+          _weightController,
+          'kg',
         ),
-        _buildField(
-          icon: Icons.monitor_weight_outlined,
-          iconBg: const Color(0xFFEAF3DE),
-          iconColor: const Color(0xFF1D9E75),
-          label: 'Weight',
-          controller: _weightController,
-          suffix: 'kg',
-          keyboardType: TextInputType.number,
+        _buildEditableInfoRow(
+          Icons.height_outlined,
+          'Height',
+          _heightController,
+          'cm',
         ),
-        _buildField(
-          icon: Icons.straighten_outlined,
-          iconBg: const Color(0xFFEEEDFE),
-          iconColor: const Color(0xFF534AB7),
-          label: 'Height',
-          controller: _heightController,
-          suffix: 'cm',
-          keyboardType: TextInputType.number,
+        _buildInfoRow(
+          Icons.favorite_border,
+          'BMI',
+          bmi == null ? 'Not set' : bmi.toStringAsFixed(1),
         ),
       ],
     );
   }
 
-  Widget _buildCard({required String label, required List<Widget> children}) {
+  Widget _buildDiabetesCard() {
+    return _buildSectionCard(
+      title: 'Diabetes Information',
+      icon: Icons.medical_services_outlined,
+      children: [
+        _buildInfoRow(
+          Icons.restaurant_menu,
+          'Carb Ratio',
+          _value(profile?.carbRatio),
+        ),
+        _buildInfoRow(
+          Icons.trending_down,
+          'Correction Factor',
+          _value(profile?.correctionFactor),
+        ),
+        _buildInfoRow(
+          Icons.water_drop_outlined,
+          'Lantus Dose',
+          _value(profile?.lantusDose, suffix: 'units'),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAllergyCard() {
+    final hasAllergy = profile?.hasFoodAllergy == true;
+    final allergyText = hasAllergy
+        ? _value(profile?.allergyDetails)
+        : 'No food allergy';
+
+    return _buildSectionCard(
+      title: 'Food Allergy',
+      icon: Icons.warning_amber_rounded,
+      children: [
+        _buildInfoRow(
+          hasAllergy ? Icons.error_outline : Icons.check_circle_outline,
+          'Allergy',
+          allergyText,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDoctorCard() {
+    return _buildSectionCard(
+      title: 'Doctor',
+      icon: Icons.local_hospital_outlined,
+      children: [
+        _buildInfoRow(Icons.person, 'Doctor Name', _value(profile?.doctorName)),
+        _buildInfoRow(
+          Icons.badge_outlined,
+          'Specialty',
+          _value(profile?.doctorSpecialty),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSectionCard({
+    required String title,
+    required IconData icon,
+    required List<Widget> children,
+  }) {
     return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.black.withOpacity(0.08), width: 0.5),
-      ),
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: _cardDecoration(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
-            child: Text(
-              label.toUpperCase(),
-              style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w500,
-                color: Colors.grey,
-                letterSpacing: 0.6,
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 18,
+                backgroundColor: const Color(0xFFE4F3FF),
+                child: Icon(icon, color: const Color(0xFF1A73B8), size: 20),
               ),
-            ),
+              const SizedBox(width: 10),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF123B63),
+                ),
+              ),
+            ],
           ),
+          const SizedBox(height: 14),
           ...children,
         ],
       ),
     );
   }
 
-  Widget _buildField({
-    required IconData icon,
-    required Color iconBg,
-    required Color iconColor,
-    required String label,
-    required TextEditingController controller,
-    String? suffix,
-    TextInputType keyboardType = TextInputType.text,
-  }) {
-    return Column(
-      children: [
-        const Divider(height: 0.5, thickness: 0.5),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-          child: Row(
-            children: [
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: iconBg,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(icon, color: iconColor, size: 16),
-              ),
-              const SizedBox(width: 12),
-              SizedBox(
-                width: 70,
-                child: Text(
-                  label,
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-              ),
-              Expanded(
-                child: _isEditing
-                    ? TextField(
-                        controller: controller,
-                        keyboardType: keyboardType,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                        ),
-                        decoration: const InputDecoration(
-                          isDense: true,
-                          contentPadding: EdgeInsets.only(bottom: 2),
-                          border: UnderlineInputBorder(
-                            borderSide: BorderSide(
-                              color: Color(0xFF1A4A8A),
-                              width: 1.5,
-                            ),
-                          ),
-                          focusedBorder: UnderlineInputBorder(
-                            borderSide: BorderSide(
-                              color: Color(0xFF1A4A8A),
-                              width: 1.5,
-                            ),
-                          ),
-                        ),
-                      )
-                    : Text(
-                        controller.text.isEmpty
-                            ? '-'
-                            : suffix != null
-                            ? '${controller.text} $suffix'
-                            : controller.text,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSectionLabel(String text) {
-    return Text(
-      text.toUpperCase(),
-      style: const TextStyle(
-        fontSize: 11,
-        fontWeight: FontWeight.w500,
-        color: Colors.grey,
-        letterSpacing: 0.6,
-      ),
-    );
-  }
-
-  Widget _buildDoctorCard() {
+  Widget _buildInfoRow(IconData icon, String label, String value) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.black.withOpacity(0.08), width: 0.5),
+        color: const Color(0xFFF7FBFF),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE1EEF8)),
       ),
       child: Row(
         children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: const BoxDecoration(
-              color: Color(0xFFEAF3DE),
-              shape: BoxShape.circle,
-            ),
-            child: Center(
-              child: Text(
-                _doctorInitials(),
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w500,
-                  color: Color(0xFF3B6D11),
-                ),
-              ),
+          Icon(icon, color: const Color(0xFF1A73B8), size: 22),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(fontSize: 14, color: Color(0xFF6B7280)),
             ),
           ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: _isEditing
-                ? Column(
-                    children: [
-                      TextField(
-                        controller: _doctorController,
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w500,
-                        ),
-                        decoration: const InputDecoration(
-                          isDense: true,
-                          contentPadding: EdgeInsets.only(bottom: 2),
-                          border: UnderlineInputBorder(
-                            borderSide: BorderSide(
-                              color: Color(0xFF1A4A8A),
-                              width: 1.5,
-                            ),
-                          ),
-                          focusedBorder: UnderlineInputBorder(
-                            borderSide: BorderSide(
-                              color: Color(0xFF1A4A8A),
-                              width: 1.5,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      TextField(
-                        controller: _specialtyController,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey,
-                        ),
-                        decoration: const InputDecoration(
-                          isDense: true,
-                          contentPadding: EdgeInsets.only(bottom: 2),
-                          border: UnderlineInputBorder(
-                            borderSide: BorderSide(
-                              color: Colors.grey,
-                              width: 0.5,
-                            ),
-                          ),
-                          focusedBorder: UnderlineInputBorder(
-                            borderSide: BorderSide(
-                              color: Color(0xFF1A4A8A),
-                              width: 1.5,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  )
-                : Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _doctorController.text.isNotEmpty
-                            ? _doctorController.text
-                            : '-',
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        _specialtyController.text.isNotEmpty
-                            ? _specialtyController.text
-                            : '-',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey,
-                        ),
-                      ),
-                    ],
-                  ),
+          Flexible(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: const TextStyle(
+                fontSize: 15,
+                color: Color(0xFF123B63),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ),
         ],
       ),
     );
   }
 
-  String _doctorInitials() {
-    final text = _doctorController.text.trim();
-    if (text.isEmpty) return '--';
+  Widget _buildEditableInfoRow(
+    IconData icon,
+    String label,
+    TextEditingController controller,
+    String suffix,
+  ) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7FBFF),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE1EEF8)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: const Color(0xFF1A73B8), size: 22),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(fontSize: 14, color: Color(0xFF6B7280)),
+            ),
+          ),
+          _isEditing
+              ? SizedBox(
+                  width: 90,
+                  child: TextField(
+                    controller: controller,
+                    keyboardType: TextInputType.number,
+                    textAlign: TextAlign.right,
+                    decoration: InputDecoration(
+                      isDense: true,
+                      suffixText: suffix,
+                      border: const UnderlineInputBorder(),
+                    ),
+                  ),
+                )
+              : Flexible(
+                  child: Text(
+                    controller.text.trim().isEmpty
+                        ? 'Not set'
+                        : '${controller.text} $suffix',
+                    textAlign: TextAlign.right,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      color: Color(0xFF123B63),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+        ],
+      ),
+    );
+  }
 
-    final parts = text.split(' ').where((e) => e.isNotEmpty).toList();
-    if (parts.length == 1) {
-      return parts.first.substring(0, 1).toUpperCase();
-    }
-
-    return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
+  BoxDecoration _cardDecoration() {
+    return BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(22),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.07),
+          blurRadius: 14,
+          offset: const Offset(0, 6),
+        ),
+      ],
+    );
   }
 
   Widget _buildLogoutButton() {
-    return Align(
-      alignment: Alignment.centerRight,
-      child: TextButton.icon(
-        onPressed: () {
-            Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (context) => const AuthScreen()),
-          (route) => false,
-        );
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: () async {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.clear();
+
+          if (!mounted) return;
+
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (context) => const AuthScreen()),
+            (route) => false,
+          );
         },
-        icon: const Icon(Icons.logout, color: Color(0xFFA32D2D), size: 18),
-        label: const Text(
-          'Log Out',
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-            color: Color(0xFFA32D2D),
-          ),
-        ),
-        style: TextButton.styleFrom(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          backgroundColor: const Color(0xFFFCEBEB),
+        icon: const Icon(Icons.logout),
+        label: const Text('Log Out'),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: const Color(0xFFE74C4C),
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 14),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-            side: const BorderSide(color: Color(0xFFF09595), width: 0.5),
+            borderRadius: BorderRadius.circular(16),
           ),
         ),
       ),

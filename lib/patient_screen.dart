@@ -1800,7 +1800,8 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => const WaterTrackerPage(),
+                              builder: (context) =>
+                                  WaterTrackerPage(userId: widget.userId),
                             ),
                           );
                           return;

@@ -6,6 +6,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'patient_screen.dart';
 
 import 'services/meal_report_api.dart';
 
@@ -327,8 +328,26 @@ class _MealReportScreenState extends State<MealReportScreen> {
               pinned: true,
               expandedHeight: 130,
               backgroundColor: kPrimary,
+              automaticallyImplyLeading: false,
+              leadingWidth: 56,
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white),
+                onPressed: () async {
+                  final prefs = await SharedPreferences.getInstance();
+                  final userId = prefs.getString('userId') ?? '';
+
+                  if (!context.mounted) return;
+
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => PatientHomeScreen(userId: userId),
+                    ),
+                  );
+                },
+              ),
               flexibleSpace: FlexibleSpaceBar(
-                titlePadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                titlePadding: const EdgeInsets.fromLTRB(64, 0, 16, 16),
                 title: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
