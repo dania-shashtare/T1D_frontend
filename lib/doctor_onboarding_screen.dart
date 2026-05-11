@@ -488,7 +488,7 @@ class _DoctorOnboardingScreenState extends State<DoctorOnboardingScreen> {
         const SizedBox(height: 14),
         _textField(
           controller: workplaceController,
-          label: "Workplace / Clinic / Hospital",
+          label: "your workplace (town_city_street)",
           icon: Icons.local_hospital_outlined,
         ),
         const SizedBox(height: 14),
