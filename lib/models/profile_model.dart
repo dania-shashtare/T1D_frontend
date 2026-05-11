@@ -11,6 +11,7 @@ class ProfileModel {
   final double? lunchDose;
   final double? dinnerDose;
   final double? lantusDose;
+  final String? lantusTime;
 
   final String correctionFactor;
   final String carbRatio;
@@ -29,6 +30,7 @@ class ProfileModel {
     this.lunchDose,
     this.dinnerDose,
     this.lantusDose,
+    this.lantusTime,
     required this.correctionFactor,
     required this.carbRatio,
     required this.hasFoodAllergy,
@@ -55,7 +57,7 @@ class ProfileModel {
       lunchDose: toDouble(json['lunchDose']),
       dinnerDose: toDouble(json['dinnerDose']),
       lantusDose: toDouble(json['lantusDose']),
-
+      lantusTime: json['lantusTime']?.toString(),
       correctionFactor: json['correctionFactor']?.toString() ?? '',
       carbRatio: json['carbRatio']?.toString() ?? '',
 

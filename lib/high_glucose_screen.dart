@@ -1,5 +1,8 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'dart:async';
+import 'notification_service.dart';
+import 'services/firebase_notification_service.dart';
 
 class HighGlucoseScreen extends StatefulWidget {
   final double glucoseValue;
@@ -81,6 +84,23 @@ class _HighGlucoseScreenState extends State<HighGlucoseScreen>
 
   Future<void> _confirmCorrection() async {
     if (!mounted) return;
+
+    if (reminderEnabled) {
+      Timer(const Duration(hours: 2), () async {
+        try {
+          await NotificationService.showHighGlucoseNotification();
+
+          await FirebaseNotificationService.saveNotificationToFirestore(
+            userId: widget.userId,
+            title: 'High glucose follow-up',
+            body: '2 hours passed. Please recheck your glucose.',
+            type: 'high_glucose_followup',
+          );
+        } catch (e) {
+          debugPrint('High glucose notification failed: $e');
+        }
+      });
+    }
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(

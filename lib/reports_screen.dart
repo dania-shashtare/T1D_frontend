@@ -173,6 +173,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final minVal = values.reduce(math.min);
     final maxVal = values.reduce(math.max);
 
+    final overallAvg = _overallAverageGlucose();
+
     int low = 0;
     int inRange = 0;
     int high = 0;
@@ -199,6 +201,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final chartPoints = _buildChartPoints(readings);
     final bestLabel = _bestPeriodLabel(chartPoints);
     final worstLabel = _worstPeriodLabel(chartPoints);
+
     final insight = _buildInsight(
       avg: avg,
       lowPercent: lowPercent,
@@ -212,7 +215,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     return ReportStats(
       periodName: _periodTitle(),
       averageGlucose: avg,
-      estimatedA1c: _estimatedA1c(avg),
+      estimatedA1c: _estimatedA1c(overallAvg),
       minGlucose: minVal,
       maxGlucose: maxVal,
       totalReadings: total,
@@ -225,8 +228,15 @@ class _ReportsScreenState extends State<ReportsScreen> {
       worstLabel: worstLabel,
       insight: insight,
       chartPoints: chartPoints,
-      confidence: _confidence(total),
+      confidence: _confidence(allReadings.length),
     );
+  }
+
+  double _overallAverageGlucose() {
+    if (allReadings.isEmpty) return 0;
+
+    final values = allReadings.map((e) => e.value).toList();
+    return values.reduce((a, b) => a + b) / values.length;
   }
 
   double _estimatedA1c(double avgGlucose) {
@@ -1367,7 +1377,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Confidence: ${stats.confidence} · Based on ${stats.totalReadings} readings',
+                  'Based on your entered glucose readings',
                   style: const TextStyle(color: Colors.white70, fontSize: 12),
                 ),
               ],

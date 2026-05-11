@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class GlucoseApi {
-  //static const String baseUrl = 'http://localhost:5000/api/glucose';
+  // static const String baseUrl = 'http://localhost:5000/api/glucose';
 
   // If you run on Android Emulator, use this instead:
   static const String baseUrl = 'http://10.0.2.2:5000/api/glucose';
@@ -68,6 +68,42 @@ class GlucoseApi {
     );
   }
 
+  static Future<List<Map<String, dynamic>>> getLowTreatmentSuggestions({
+    required int carbsNeeded,
+    required double weight,
+  }) async {
+    final url = Uri.parse('$baseUrl/low-treatment/suggestions');
+
+    final response = await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'carbsNeeded': carbsNeeded, 'weight': weight}),
+    );
+
+    print('LOW AI SUGGESTIONS URL: $url');
+    print('LOW AI SUGGESTIONS STATUS: ${response.statusCode}');
+    print('LOW AI SUGGESTIONS BODY: ${response.body}');
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      final List suggestions = data['suggestions'] ?? [];
+
+      return suggestions.map<Map<String, dynamic>>((item) {
+        return {
+          'title': item['title'] ?? '',
+          'amount': item['amount'] ?? item['subtitle'] ?? '',
+          'carbs': item['carbs'] ?? carbsNeeded,
+          'image_query':
+              item['image_query'] ?? item['imageQuery'] ?? item['title'] ?? '',
+        };
+      }).toList();
+    }
+
+    throw Exception(
+      'Failed to get low treatment suggestions. Status: ${response.statusCode}, Body: ${response.body}',
+    );
+  }
+
   static Future<Map<String, dynamic>> saveLowTreatment({
     required String readingId,
     required String type,
@@ -76,6 +112,10 @@ class GlucoseApi {
     required String subtitle,
     String? customText,
     required bool reminderEnabled,
+    required int carbsNeeded,
+    required int selectedCarbs,
+    String? imageUrl,
+    String? imageQuery,
   }) async {
     final url = Uri.parse('$baseUrl/$readingId/low-treatment');
 
@@ -89,6 +129,10 @@ class GlucoseApi {
         'subtitle': subtitle,
         'customText': customText ?? '',
         'reminderEnabled': reminderEnabled,
+        'carbsNeeded': carbsNeeded,
+        'selectedCarbs': selectedCarbs,
+        'imageUrl': imageUrl ?? '',
+        'imageQuery': imageQuery ?? '',
       }),
     );
 

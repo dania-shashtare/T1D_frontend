@@ -47,6 +47,7 @@ class _PatientOnboardingScreenState extends State<PatientOnboardingScreen> {
   final lunchDoseController = TextEditingController();
   final dinnerDoseController = TextEditingController();
   final lantusDoseController = TextEditingController();
+  final lantusTimeController = TextEditingController();
   final correctionFactorController = TextEditingController();
   final carbRatioController = TextEditingController();
 
@@ -82,6 +83,7 @@ class _PatientOnboardingScreenState extends State<PatientOnboardingScreen> {
     lunchDoseController.dispose();
     dinnerDoseController.dispose();
     lantusDoseController.dispose();
+    lantusTimeController.dispose();
     correctionFactorController.dispose();
     carbRatioController.dispose();
     allergyDetailsController.dispose();
@@ -165,6 +167,7 @@ class _PatientOnboardingScreenState extends State<PatientOnboardingScreen> {
           lunchDoseController.text.trim().isEmpty ||
           dinnerDoseController.text.trim().isEmpty ||
           lantusDoseController.text.trim().isEmpty ||
+          lantusTimeController.text.trim().isEmpty ||
           correctionFactorController.text.trim().isEmpty) {
         _showSnack("Please complete the fixed dose details");
         return false;
@@ -174,6 +177,7 @@ class _PatientOnboardingScreenState extends State<PatientOnboardingScreen> {
     if (managementType == "Carb Counting") {
       if (carbRatioController.text.trim().isEmpty ||
           lantusDoseController.text.trim().isEmpty ||
+          lantusTimeController.text.trim().isEmpty ||
           correctionFactorController.text.trim().isEmpty) {
         _showSnack("Please complete the carb counting details");
         return false;
@@ -237,6 +241,7 @@ class _PatientOnboardingScreenState extends State<PatientOnboardingScreen> {
         lunchDose: lunchDose,
         dinnerDose: dinnerDose,
         lantusDose: lantusDose,
+        lantusTime: lantusTimeController.text.trim(),
         correctionFactor: correctionFactorController.text.trim(),
         carbRatio: carbRatioController.text.trim(),
         hasFoodAllergy: hasFoodAllergy,
@@ -760,6 +765,12 @@ class _PatientOnboardingScreenState extends State<PatientOnboardingScreen> {
           ),
           const SizedBox(height: 14),
           _textField(
+            controller: lantusTimeController,
+            label: "Lantus / Basal Time (e.g. 9:00 PM)",
+            icon: Icons.access_time,
+          ),
+          const SizedBox(height: 14),
+          _textField(
             controller: correctionFactorController,
             label: "Correction Factor (e.g. 1 unit لكل 50)",
             icon: Icons.calculate_outlined,
@@ -781,6 +792,12 @@ class _PatientOnboardingScreenState extends State<PatientOnboardingScreen> {
             controller: lantusDoseController,
             label: "Lantus / Basal Dose",
             icon: Icons.medication_outlined,
+          ),
+          const SizedBox(height: 14),
+          _textField(
+            controller: lantusTimeController,
+            label: "Lantus / Basal Time (e.g. 9:00 PM)",
+            icon: Icons.access_time,
           ),
           const SizedBox(height: 14),
           _textField(

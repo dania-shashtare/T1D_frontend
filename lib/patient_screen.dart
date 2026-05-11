@@ -22,6 +22,10 @@ import 'chat.dart';
 import 'meal_logger.dart';
 import 'meals_report.dart';
 import 'water_tracker_page.dart';
+import 'notification_service.dart';
+import 'services/profile_api.dart';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'contact_nutritionist_page.dart';
 import 'contact_doctor_page.dart';
 import 'contact_specialists_page.dart';
@@ -101,7 +105,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
       vsync: this,
       duration: const Duration(milliseconds: 1700),
     )..repeat(reverse: true);
-
+    _scheduleLantusFromProfile();
     _loadPatientProfile();
     _loadReadings();
   }
@@ -528,6 +532,60 @@ Widget _contactOptionTile({
     );
   }
 
+  Future<void> _scheduleLantusFromProfile() async {
+    try {
+      final data = await ProfileApi.getProfile(widget.userId);
+
+      final lantusTime = data.lantusTime;
+
+      if (lantusTime == null || lantusTime.trim().isEmpty) {
+        print('NO LANTUS TIME FOUND');
+        return;
+      }
+
+      final cleanedTime = lantusTime.trim().toUpperCase();
+
+      final isPm = cleanedTime.contains('PM');
+      final isAm = cleanedTime.contains('AM');
+
+      final timeOnly = cleanedTime
+          .replaceAll('AM', '')
+          .replaceAll('PM', '')
+          .trim();
+
+      final parts = timeOnly.split(':');
+
+      int hour = int.parse(parts[0]);
+      final minute = int.parse(parts[1]);
+
+      if (isPm && hour != 12) {
+        hour += 12;
+      }
+
+      if (isAm && hour == 12) {
+        hour = 0;
+      }
+
+      print('BEFORE CALLING NOTIFICATION SERVICE');
+
+      try {
+        await NotificationService.scheduleLantusNotification(
+          userId: widget.userId,
+          hour: hour,
+          minute: minute,
+        );
+
+        print('AFTER CALLING NOTIFICATION SERVICE');
+      } catch (e) {
+        print('NOTIFICATION SERVICE ERROR: $e');
+      }
+
+      print('LANTUS SCHEDULED FROM PATIENT HOME AT: $hour:$minute');
+    } catch (e) {
+      print('FAILED TO SCHEDULE LANTUS FROM HOME: $e');
+    }
+  }
+
   Future<void> _loadPatientProfile() async {
     try {
       final patientProfile = await OnboardingApi.getPatientProfile(
@@ -696,6 +754,13 @@ Widget _contactOptionTile({
     required String readingId,
     required double glucoseValue,
   }) async {
+    final profile = await ProfileApi.getProfile(widget.userId);
+
+    final double patientWeight =
+        double.tryParse(profile.weight.toString()) ?? 50;
+
+    if (!mounted) return;
+
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
@@ -703,6 +768,7 @@ Widget _contactOptionTile({
           readingId: readingId,
           glucoseValue: glucoseValue,
           userId: widget.userId,
+          patientWeightKg: patientWeight,
         ),
       ),
     );
@@ -940,16 +1006,59 @@ Widget _contactOptionTile({
             ],
           ),
         ),
-        GestureDetector(
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => NotificationsScreen(userId: widget.userId),
-              ),
+        StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection('users')
+              .doc(widget.userId)
+              .collection('notifications')
+              .where('isRead', isEqualTo: false)
+              .snapshots(),
+          builder: (context, snapshot) {
+            final unreadCount = snapshot.data?.docs.length ?? 0;
+
+            return Stack(
+              clipBehavior: Clip.none,
+              children: [
+                GestureDetector(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            NotificationsScreen(userId: widget.userId),
+                      ),
+                    );
+                  },
+                  child: _circleIcon(Icons.notifications_none_rounded),
+                ),
+                if (unreadCount > 0)
+                  Positioned(
+                    right: -2,
+                    top: -2,
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      constraints: const BoxConstraints(
+                        minWidth: 18,
+                        minHeight: 18,
+                      ),
+                      decoration: const BoxDecoration(
+                        color: Colors.red,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Text(
+                        unreadCount > 9 ? '9+' : unreadCount.toString(),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             );
           },
-          child: _circleIcon(Icons.notifications_none_rounded),
         ),
         const SizedBox(width: 10),
         GestureDetector(
@@ -1089,7 +1198,7 @@ Widget _contactOptionTile({
                                       ],
                                     ),
                                     lineTouchData: LineTouchData(
-                                      handleBuiltInTouches: true,
+                                      handleBuiltInTouches: false,
                                       touchTooltipData: LineTouchTooltipData(
                                         getTooltipColor: (_) => Colors.white,
                                         tooltipRoundedRadius: 12,
@@ -1102,28 +1211,36 @@ Widget _contactOptionTile({
                                           );
                                         },
                                       ),
-                                      touchCallback: (event, response) {
-                                        if (!event
-                                                .isInterestedForInteractions ||
-                                            response == null ||
-                                            response.lineBarSpots == null ||
-                                            response.lineBarSpots!.isEmpty) {
-                                          return;
-                                        }
+                                      touchCallback:
+                                          (
+                                            FlTouchEvent event,
+                                            LineTouchResponse? response,
+                                          ) async {
+                                            if (response == null ||
+                                                response.lineBarSpots == null ||
+                                                response
+                                                    .lineBarSpots!
+                                                    .isEmpty) {
+                                              return;
+                                            }
 
-                                        if (event is FlTapUpEvent) {
-                                          final spot =
-                                              response.lineBarSpots!.first;
-                                          final item = _preparedReadingForSpot(
-                                            spot,
-                                            prepared,
-                                          );
+                                            if (event is FlTapUpEvent) {
+                                              final spot =
+                                                  response.lineBarSpots!.first;
 
-                                          if (item != null) {
-                                            _openReadingFromChart(item.reading);
-                                          }
-                                        }
-                                      },
+                                              final item =
+                                                  _preparedReadingForSpot(
+                                                    spot,
+                                                    prepared,
+                                                  );
+
+                                              if (item == null) return;
+
+                                              await _openReadingFromChart(
+                                                item.reading,
+                                              );
+                                            }
+                                          },
                                     ),
                                     titlesData: FlTitlesData(
                                       leftTitles: AxisTitles(
@@ -1872,7 +1989,7 @@ Widget _contactOptionTile({
   void _showMainMenu() {
     final menuItems = [
       {'icon': Icons.medical_information_outlined, 'label': 'Doctor'},
-      {'icon': Icons.contact_support_outlined, 'label': 'Contact'},
+       {'icon': Icons.contact_support_outlined, 'label': 'Contact'},
       {
         'icon': Icons.chat_bubble_outline_rounded,
         'label': 'Chat / Ask anything',
