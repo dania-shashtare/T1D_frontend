@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/profile_model.dart';
 import '../services/profile_api.dart';
 import 'auth_screen.dart';
+import 'notification_service.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -342,6 +343,11 @@ class _ProfilePageState extends State<ProfilePage> {
           Icons.water_drop_outlined,
           'Lantus Dose',
           _value(profile?.lantusDose, suffix: 'units'),
+        ),
+        _buildInfoRow(
+          Icons.access_time,
+          'Lantus Time',
+          _value(profile?.lantusTime),
         ),
       ],
     );

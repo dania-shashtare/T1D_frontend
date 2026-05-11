@@ -1,32 +1,46 @@
+import 'dart:convert';
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+
 import 'notification_service.dart';
 import 'services/glucose_api.dart';
 import 'patient_screen.dart';
+import 'services/firebase_notification_service.dart';
 
 class TreatmentOption {
   final String key;
   final String title;
-  final String subtitle;
-  final String imagePath;
+  final String amount;
+  final int carbs;
+  final String imageQuery;
+  final String imageUrl;
 
   const TreatmentOption({
     required this.key,
     required this.title,
-    required this.subtitle,
-    required this.imagePath,
+    required this.amount,
+    required this.carbs,
+    required this.imageQuery,
+    required this.imageUrl,
   });
 }
+
+const String _pexelsKey =
+    '36pYRNHhXD1sdl1qwsWjx8ltRmusydlEZSJa9DL72CzVnB9efH10mi9v';
 
 class LowGlucoseScreen extends StatefulWidget {
   final String readingId;
   final double glucoseValue;
   final String userId;
+  final double patientWeightKg;
 
   const LowGlucoseScreen({
     super.key,
     required this.readingId,
     required this.glucoseValue,
     required this.userId,
+    required this.patientWeightKg,
   });
 
   @override
@@ -39,55 +53,25 @@ class _LowGlucoseScreenState extends State<LowGlucoseScreen>
   bool reminderEnabled = true;
   bool isOtherSelected = false;
   bool isLoadingSavedTreatment = true;
+  bool isLoadingSuggestions = true;
   bool isSaving = false;
+  bool aiFailed = false;
+  bool hasSavedTreatment = false;
 
   final TextEditingController _otherFoodController = TextEditingController();
 
   String? savedTreatmentTitle;
   String? savedTreatmentSubtitle;
   String? savedCustomText;
+  String? savedPresetKey;
+
+  List<TreatmentOption> options = [];
 
   late final AnimationController _wobbleCtrl;
   late final Animation<double> _wobbleAnim;
 
-  static const List<TreatmentOption> _options = [
-    TreatmentOption(
-      key: 'orange_juice',
-      title: 'Orange Juice',
-      subtitle: '120 ml  •  ½ cup',
-      imagePath: 'lib/assets/images/orange_juice.png',
-    ),
-    TreatmentOption(
-      key: 'glucose_tablets',
-      title: 'Glucose Tablets',
-      subtitle: '3–4 tablets',
-      imagePath: 'lib/assets/images/glucose_tablets.png',
-    ),
-    TreatmentOption(
-      key: 'regular_soda',
-      title: 'Regular Soda',
-      subtitle: '150 ml  •  ½ can',
-      imagePath: 'lib/assets/images/regular_soda.png',
-    ),
-    TreatmentOption(
-      key: 'honey',
-      title: 'Honey',
-      subtitle: '1 tablespoon',
-      imagePath: 'lib/assets/images/honey.png',
-    ),
-    TreatmentOption(
-      key: 'toast',
-      title: 'Toast',
-      subtitle: '1 slice',
-      imagePath: 'lib/assets/images/toast.png',
-    ),
-    TreatmentOption(
-      key: 'raisins',
-      title: 'Raisins',
-      subtitle: '2 tablespoons',
-      imagePath: 'lib/assets/images/raisins.png',
-    ),
-  ];
+  double get requiredCarbs => widget.patientWeightKg * 0.3;
+  int get requiredCarbsRounded => requiredCarbs.round();
 
   static const _pageBg = Color(0xFFF4F8FD);
   static const _red = Color(0xFFE85151);
@@ -114,7 +98,22 @@ class _LowGlucoseScreenState extends State<LowGlucoseScreen>
       end: 0.015,
     ).animate(CurvedAnimation(parent: _wobbleCtrl, curve: Curves.easeInOut));
 
-    _loadSavedTreatment();
+    _initLowScreen();
+  }
+
+  Future<void> _initLowScreen() async {
+    await _loadSavedTreatment();
+
+    if (!mounted) return;
+
+    if (hasSavedTreatment) {
+      setState(() {
+        isLoadingSuggestions = false;
+      });
+      return;
+    }
+
+    await _loadAiSuggestions();
   }
 
   @override
@@ -122,6 +121,123 @@ class _LowGlucoseScreenState extends State<LowGlucoseScreen>
     _otherFoodController.dispose();
     _wobbleCtrl.dispose();
     super.dispose();
+  }
+
+  Future<String> _fetchPexelsImage(String query) async {
+    try {
+      final q = Uri.encodeComponent('$query food drink');
+
+      final res = await http.get(
+        Uri.parse(
+          'https://api.pexels.com/v1/search?query=$q&per_page=1&orientation=square',
+        ),
+        headers: {'Authorization': _pexelsKey},
+      );
+
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        final photos = data['photos'] as List;
+
+        if (photos.isNotEmpty) {
+          return photos[0]['src']['large'] as String;
+        }
+      }
+    } catch (e) {
+      debugPrint('Pexels image failed: $e');
+    }
+
+    return '';
+  }
+
+  Future<void> _loadAiSuggestions() async {
+    try {
+      final suggestions = await GlucoseApi.getLowTreatmentSuggestions(
+        carbsNeeded: requiredCarbsRounded,
+        weight: widget.patientWeightKg,
+      );
+
+      final List<TreatmentOption> loadedOptions = [];
+
+      for (final item in suggestions) {
+        final title = (item['title'] ?? 'Fast carbs').toString();
+        final amount = (item['amount'] ?? '').toString();
+        final imageQuery = (item['image_query'] ?? title).toString();
+
+        final carbsValue =
+            int.tryParse((item['carbs'] ?? requiredCarbsRounded).toString()) ??
+            requiredCarbsRounded;
+
+        final imageUrl = await _fetchPexelsImage(imageQuery);
+
+        loadedOptions.add(
+          TreatmentOption(
+            key: title.toLowerCase().replaceAll(' ', '_'),
+            title: title,
+            amount: amount,
+            carbs: carbsValue,
+            imageQuery: imageQuery,
+            imageUrl: imageUrl,
+          ),
+        );
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        options = loadedOptions;
+        aiFailed = options.isEmpty;
+        isLoadingSuggestions = false;
+      });
+    } catch (e) {
+      debugPrint('AI suggestions failed: $e');
+
+      if (!mounted) return;
+
+      setState(() {
+        options = _backupOptions();
+        aiFailed = true;
+        isLoadingSuggestions = false;
+      });
+    }
+  }
+
+  List<TreatmentOption> _backupOptions() {
+    final c = requiredCarbsRounded;
+
+    return [
+      TreatmentOption(
+        key: 'orange_juice',
+        title: 'Orange Juice',
+        amount: 'About ${(c * 8).round()} ml',
+        carbs: c,
+        imageQuery: 'orange juice',
+        imageUrl: '',
+      ),
+      TreatmentOption(
+        key: 'glucose_tablets',
+        title: 'Glucose Tablets',
+        amount: 'About ${(c / 4).ceil()} tablets',
+        carbs: c,
+        imageQuery: 'glucose tablets',
+        imageUrl: '',
+      ),
+      TreatmentOption(
+        key: 'regular_soda',
+        title: 'Regular Soda',
+        amount: 'About ${(c * 10).round()} ml',
+        carbs: c,
+        imageQuery: 'regular soda',
+        imageUrl: '',
+      ),
+      TreatmentOption(
+        key: 'honey',
+        title: 'Honey',
+        amount: 'About ${(c / 17).clamp(0.5, 2.0).toStringAsFixed(1)} tbsp',
+        carbs: c,
+        imageQuery: 'honey',
+        imageUrl: '',
+      ),
+    ];
   }
 
   Future<void> _loadSavedTreatment() async {
@@ -133,46 +249,59 @@ class _LowGlucoseScreenState extends State<LowGlucoseScreen>
         if (!mounted) return;
         setState(() {
           isLoadingSavedTreatment = false;
+          hasSavedTreatment = false;
         });
         return;
       }
 
       final type = (lowTreatment['type'] ?? '').toString();
-      final presetKey = (lowTreatment['presetKey'] ?? '').toString();
       final title = (lowTreatment['title'] ?? '').toString();
       final subtitle = (lowTreatment['subtitle'] ?? '').toString();
       final customText = (lowTreatment['customText'] ?? '').toString();
+      final presetKey = (lowTreatment['presetKey'] ?? '').toString();
       final savedReminder = lowTreatment['reminderEnabled'];
 
-      int? matchedIndex;
+      final savedImageUrl = (lowTreatment['imageUrl'] ?? '').toString();
+      final savedImageQuery = (lowTreatment['imageQuery'] ?? '').toString();
 
-      for (int i = 0; i < _options.length; i++) {
-        final option = _options[i];
-
-        if (option.key == presetKey || option.title == title) {
-          matchedIndex = i;
-          break;
-        }
-      }
+      final selectedCarbs =
+          int.tryParse(
+            (lowTreatment['selectedCarbs'] ?? requiredCarbsRounded).toString(),
+          ) ??
+          requiredCarbsRounded;
 
       if (!mounted) return;
 
       setState(() {
-        if (type == 'other') {
-          selectedFoodIndex = null;
-          isOtherSelected = true;
-          _otherFoodController.text = customText;
-        } else {
-          selectedFoodIndex = matchedIndex;
-          isOtherSelected = false;
-          _otherFoodController.clear();
-        }
+        hasSavedTreatment = true;
+        savedPresetKey = presetKey.isEmpty ? null : presetKey;
 
         reminderEnabled = savedReminder is bool ? savedReminder : true;
 
         savedTreatmentTitle = title.isEmpty ? null : title;
         savedTreatmentSubtitle = subtitle.isEmpty ? null : subtitle;
         savedCustomText = customText.isEmpty ? null : customText;
+
+        if (type == 'other') {
+          selectedFoodIndex = null;
+          isOtherSelected = true;
+          _otherFoodController.text = customText;
+          options = [];
+        } else {
+          isOtherSelected = false;
+          selectedFoodIndex = 0;
+
+          options = [
+            TreatmentOption(
+              key: savedPresetKey ?? title.toLowerCase().replaceAll(' ', '_'),
+              title: title.isEmpty ? 'Saved treatment' : title,
+              amount: subtitle.isEmpty ? 'Saved option' : subtitle,
+              carbs: selectedCarbs,
+              imageQuery: savedImageQuery.isEmpty ? title : savedImageQuery,
+              imageUrl: savedImageUrl,
+            ),
+          ];
+        }
 
         isLoadingSavedTreatment = false;
       });
@@ -182,6 +311,7 @@ class _LowGlucoseScreenState extends State<LowGlucoseScreen>
       if (!mounted) return;
       setState(() {
         isLoadingSavedTreatment = false;
+        hasSavedTreatment = false;
       });
     }
   }
@@ -212,23 +342,47 @@ class _LowGlucoseScreenState extends State<LowGlucoseScreen>
 
       final TreatmentOption? selected = selectedFoodIndex == null
           ? null
-          : _options[selectedFoodIndex!];
+          : options[selectedFoodIndex!];
 
       await GlucoseApi.saveLowTreatment(
         readingId: widget.readingId,
         type: isOther ? 'other' : 'preset',
         presetKey: isOther ? null : selected!.key,
         title: isOther ? 'Other' : selected!.title,
-        subtitle: isOther ? '' : selected!.subtitle,
+        subtitle: isOther
+            ? ''
+            : '${selected!.amount} • ${selected.carbs}g carbs',
         customText: isOther ? customText : '',
         reminderEnabled: reminderEnabled,
+        carbsNeeded: requiredCarbsRounded,
+        selectedCarbs: isOther ? requiredCarbsRounded : selected!.carbs,
+        imageUrl: isOther ? '' : selected!.imageUrl,
+        imageQuery: isOther ? '' : selected!.imageQuery,
       );
 
       if (reminderEnabled) {
         try {
-          await NotificationService.scheduleRecheckNotification();
+          Timer(const Duration(minutes: 1), () async {
+            try {
+              debugPrint('USER ID FOR NOTIFICATION: ${widget.userId}');
+              debugPrint('ADDING NOTIFICATION TO FIRESTORE...');
+
+              await NotificationService.showLowGlucoseNotification();
+
+              await FirebaseNotificationService.saveNotificationToFirestore(
+                userId: widget.userId,
+                title: 'Low glucose follow-up',
+                body: '15 minutes passed. Please recheck your glucose.',
+                type: 'low_glucose_followup',
+              );
+
+              debugPrint('NOTIFICATION ADDED TO FIRESTORE ✅');
+            } catch (e) {
+              debugPrint('Timer notification/firestore failed: $e');
+            }
+          });
         } catch (e) {
-          debugPrint('Notification scheduling failed: $e');
+          debugPrint('Notification failed: $e');
         }
       }
 
@@ -318,29 +472,42 @@ class _LowGlucoseScreenState extends State<LowGlucoseScreen>
                 children: [
                   _buildAlertHeader(isMobile, isWide),
                   const SizedBox(height: 18),
-
                   Padding(
                     padding: EdgeInsets.symmetric(horizontal: hPad),
                     child: _buildInfoPanel(),
                   ),
-
                   const SizedBox(height: 18),
-
                   Padding(
                     padding: EdgeInsets.symmetric(horizontal: hPad),
-                    child: const Text(
-                      'Choose one option below (about 15 g carbs):',
-                      style: TextStyle(
+                    child: Text(
+                      hasSavedTreatment
+                          ? 'Saved treatment for this reading'
+                          : 'These are the best suggestions for your weight.',
+                      style: const TextStyle(
                         color: _labelText,
                         fontSize: 17,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
                   ),
-
+                  const SizedBox(height: 6),
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: hPad),
+                    child: Text(
+                      hasSavedTreatment
+                          ? 'This is what you already selected before.'
+                          : aiFailed
+                          ? 'Backup suggestions close to $requiredCarbsRounded g fast carbs:'
+                          : 'AI suggestions close to $requiredCarbsRounded g fast carbs:',
+                      style: const TextStyle(
+                        color: _subtleText,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
                   const SizedBox(height: 12),
-
-                  if (isLoadingSavedTreatment)
+                  if (isLoadingSavedTreatment || isLoadingSuggestions)
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 30),
                       child: Center(
@@ -348,29 +515,34 @@ class _LowGlucoseScreenState extends State<LowGlucoseScreen>
                       ),
                     )
                   else ...[
-                    Padding(
-                      padding: EdgeInsets.symmetric(horizontal: hPad),
-                      child: GridView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: _options.length,
-                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: gridCount,
-                          mainAxisSpacing: 14,
-                          crossAxisSpacing: 14,
-                          childAspectRatio: gridRatio,
+                    if (options.isNotEmpty)
+                      Padding(
+                        padding: EdgeInsets.symmetric(horizontal: hPad),
+                        child: GridView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: options.length,
+                          gridDelegate:
+                              SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: hasSavedTreatment
+                                    ? 1
+                                    : gridCount,
+                                mainAxisSpacing: 14,
+                                crossAxisSpacing: 14,
+                                childAspectRatio: hasSavedTreatment
+                                    ? 2.2
+                                    : gridRatio,
+                              ),
+                          itemBuilder: (_, i) => _buildFoodCard(i),
                         ),
-                        itemBuilder: (_, i) => _buildFoodCard(i),
                       ),
-                    ),
-
-                    const SizedBox(height: 14),
-
-                    Padding(
-                      padding: EdgeInsets.symmetric(horizontal: hPad),
-                      child: _buildOtherButton(),
-                    ),
-
+                    if (!hasSavedTreatment) ...[
+                      const SizedBox(height: 14),
+                      Padding(
+                        padding: EdgeInsets.symmetric(horizontal: hPad),
+                        child: _buildOtherButton(),
+                      ),
+                    ],
                     if (isOtherSelected) ...[
                       const SizedBox(height: 12),
                       Padding(
@@ -379,7 +551,6 @@ class _LowGlucoseScreenState extends State<LowGlucoseScreen>
                       ),
                     ],
                   ],
-
                   if (savedTreatmentTitle != null ||
                       savedCustomText != null) ...[
                     const SizedBox(height: 14),
@@ -388,23 +559,17 @@ class _LowGlucoseScreenState extends State<LowGlucoseScreen>
                       child: _buildSavedTreatmentBox(),
                     ),
                   ],
-
                   const SizedBox(height: 20),
-
                   Padding(
                     padding: EdgeInsets.symmetric(horizontal: hPad),
                     child: _buildReminderCard(isMobile),
                   ),
-
                   const SizedBox(height: 16),
-
                   Padding(
                     padding: EdgeInsets.symmetric(horizontal: hPad),
                     child: _buildConfirmButton(),
                   ),
-
                   const SizedBox(height: 14),
-
                   Padding(
                     padding: EdgeInsets.symmetric(horizontal: hPad),
                     child: const Text(
@@ -598,10 +763,10 @@ class _LowGlucoseScreenState extends State<LowGlucoseScreen>
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: _borderBlue, width: 1.2),
       ),
-      child: const Column(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
+          const Text(
             'What to do',
             style: TextStyle(
               color: _darkBlue,
@@ -609,10 +774,16 @@ class _LowGlucoseScreenState extends State<LowGlucoseScreen>
               fontWeight: FontWeight.w700,
             ),
           ),
-          SizedBox(height: 10),
+          const SizedBox(height: 10),
           Text(
-            'Take 15 grams of fast-acting carbs now. Choose what you ate, then recheck your blood sugar in 15 minutes.',
-            style: TextStyle(color: _bodyText, fontSize: 15, height: 1.55),
+            hasSavedTreatment
+                ? 'You already saved what you ate for this low glucose reading.'
+                : 'Based on your weight, take $requiredCarbsRounded grams of fast-acting carbs now. Choose what you ate, then recheck your blood sugar in 15 minutes.',
+            style: const TextStyle(
+              color: _bodyText,
+              fontSize: 15,
+              height: 1.55,
+            ),
           ),
         ],
       ),
@@ -620,19 +791,16 @@ class _LowGlucoseScreenState extends State<LowGlucoseScreen>
   }
 
   Widget _buildFoodCard(int index) {
-    final opt = _options[index];
+    final opt = options[index];
     final selected = selectedFoodIndex == index && !isOtherSelected;
 
     return Material(
       color: Colors.transparent,
       child: InkWell(
         borderRadius: BorderRadius.circular(24),
-        splashColor: const Color(0xffBFE2FF).withOpacity(0.25),
-        highlightColor: const Color(0xffD9EEFF).withOpacity(0.28),
-        onTap: () => _selectPreset(index),
+        onTap: hasSavedTreatment ? null : () => _selectPreset(index),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
-          padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             color: _cardBg,
             borderRadius: BorderRadius.circular(24),
@@ -650,73 +818,123 @@ class _LowGlucoseScreenState extends State<LowGlucoseScreen>
                   ]
                 : [],
           ),
-          child: Stack(
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Center(
-                      child: Image.asset(
-                        opt.imagePath,
-                        fit: BoxFit.contain,
-                        errorBuilder: (_, __, ___) {
-                          return const Icon(
-                            Icons.fastfood_rounded,
-                            size: 44,
-                            color: Color(0xFF9BC3F2),
-                          );
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(22),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                opt.imageUrl.isNotEmpty
+                    ? Image.network(
+                        opt.imageUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => _imageFallback(),
+                        loadingBuilder: (_, child, progress) {
+                          if (progress == null) return child;
+                          return _imageFallback(loading: true);
                         },
+                      )
+                    : _imageFallback(),
+                Positioned(
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  child: Container(
+                    padding: const EdgeInsets.fromLTRB(12, 34, 12, 12),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.bottomCenter,
+                        end: Alignment.topCenter,
+                        colors: [
+                          Colors.black.withOpacity(0.74),
+                          Colors.transparent,
+                        ],
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    opt.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Color(0xFF18406D),
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          opt.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          opt.amount,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.9),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            '${opt.carbs}g carbs',
+                            style: const TextStyle(
+                              color: _darkBlue,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 3),
-                  Text(
-                    opt.subtitle,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: _subtleText,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-              Positioned(
-                top: 0,
-                right: 0,
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  width: 28,
-                  height: 28,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: selected ? _darkBlue : Colors.transparent,
-                    border: Border.all(
-                      color: selected ? _darkBlue : _borderBlue,
-                      width: 2,
-                    ),
-                  ),
-                  child: selected
-                      ? const Icon(Icons.check, color: Colors.white, size: 17)
-                      : null,
                 ),
-              ),
-            ],
+                Positioned(
+                  top: 10,
+                  right: 10,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: selected
+                          ? _darkBlue
+                          : Colors.white.withOpacity(0.9),
+                      border: Border.all(
+                        color: selected ? _darkBlue : _borderBlue,
+                        width: 2,
+                      ),
+                    ),
+                    child: selected
+                        ? const Icon(Icons.check, color: Colors.white, size: 17)
+                        : null,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _imageFallback({bool loading = false}) {
+    return Container(
+      color: _lightPanel,
+      child: Center(
+        child: loading
+            ? const CircularProgressIndicator(color: _darkBlue, strokeWidth: 2)
+            : const Icon(Icons.fastfood_rounded, color: _borderBlue, size: 44),
       ),
     );
   }
@@ -735,15 +953,6 @@ class _LowGlucoseScreenState extends State<LowGlucoseScreen>
             color: isOtherSelected ? _darkBlue : _borderBlue,
             width: isOtherSelected ? 2 : 1.3,
           ),
-          boxShadow: isOtherSelected
-              ? [
-                  BoxShadow(
-                    color: const Color(0xffCFE6FF).withOpacity(0.7),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ]
-              : [],
         ),
         child: Row(
           children: [
@@ -762,44 +971,14 @@ class _LowGlucoseScreenState extends State<LowGlucoseScreen>
             ),
             const SizedBox(width: 12),
             const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Other',
-                    style: TextStyle(
-                      color: Color(0xFF18406D),
-                      fontSize: 15,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  SizedBox(height: 3),
-                  Text(
-                    'Write what you ate or drank',
-                    style: TextStyle(
-                      color: _subtleText,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              width: 28,
-              height: 28,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: isOtherSelected ? _darkBlue : Colors.transparent,
-                border: Border.all(
-                  color: isOtherSelected ? _darkBlue : _borderBlue,
-                  width: 2,
+              child: Text(
+                'Other — write what you ate or drank',
+                style: TextStyle(
+                  color: Color(0xFF18406D),
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
-              child: isOtherSelected
-                  ? const Icon(Icons.check, color: Colors.white, size: 17)
-                  : null,
             ),
           ],
         ),
@@ -810,23 +989,13 @@ class _LowGlucoseScreenState extends State<LowGlucoseScreen>
   Widget _buildOtherTextField() {
     return TextField(
       controller: _otherFoodController,
+      enabled: !hasSavedTreatment,
       maxLines: 2,
       decoration: InputDecoration(
         hintText: 'Write what you ate or drank',
         filled: true,
         fillColor: Colors.white,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: _borderBlue),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: _borderBlue),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: _darkBlue, width: 1.4),
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
       ),
     );
   }
@@ -843,103 +1012,44 @@ class _LowGlucoseScreenState extends State<LowGlucoseScreen>
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: _borderBlue),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Saved treatment',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: _darkBlue,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            savedText,
-            style: const TextStyle(fontSize: 13, color: _bodyText, height: 1.5),
-          ),
-        ],
+      child: Text(
+        'Saved treatment: $savedText',
+        style: const TextStyle(fontSize: 13, color: _bodyText, height: 1.5),
       ),
     );
   }
 
   Widget _buildReminderCard(bool isMobile) {
-    final switchWidget = Switch(
-      value: reminderEnabled,
-      activeColor: Colors.white,
-      activeTrackColor: const Color(0xFF8DC2FF),
-      inactiveThumbColor: Colors.white,
-      inactiveTrackColor: Colors.white24,
-      onChanged: (v) => setState(() => reminderEnabled = v),
-    );
-
-    const icon = Icon(Icons.alarm_rounded, color: Colors.white, size: 28);
-
-    const textCol = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Reminder after 15 minutes',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 17,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        SizedBox(height: 4),
-        Text(
-          'Turn this on to get a notification to recheck your glucose.',
-          style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
-        ),
-      ],
-    );
-
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: _darkBlue,
         borderRadius: BorderRadius.circular(24),
       ),
-      child: isMobile
-          ? Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 52,
-                      height: 52,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: icon,
-                    ),
-                    const Spacer(),
-                    switchWidget,
-                  ],
-                ),
-                const SizedBox(height: 12),
-                textCol,
-              ],
-            )
-          : Row(
-              children: [
-                Container(
-                  width: 54,
-                  height: 54,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: icon,
-                ),
-                const SizedBox(width: 16),
-                const Expanded(child: textCol),
-                switchWidget,
-              ],
+      child: Row(
+        children: [
+          const Icon(Icons.alarm_rounded, color: Colors.white, size: 28),
+          const SizedBox(width: 14),
+          const Expanded(
+            child: Text(
+              'Reminder after 15 minutes',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+              ),
             ),
+          ),
+          Switch(
+            value: reminderEnabled,
+            activeColor: Colors.white,
+            activeTrackColor: const Color(0xFF8DC2FF),
+            onChanged: hasSavedTreatment
+                ? null
+                : (v) => setState(() => reminderEnabled = v),
+          ),
+        ],
+      ),
     );
   }
 
@@ -947,47 +1057,30 @@ class _LowGlucoseScreenState extends State<LowGlucoseScreen>
     return SizedBox(
       height: 60,
       child: ElevatedButton(
-        onPressed: isSaving || isLoadingSavedTreatment
+        onPressed: isSaving || isLoadingSavedTreatment || isLoadingSuggestions
             ? null
+            : hasSavedTreatment
+            ? () => Navigator.maybePop(context)
             : _confirmTreatment,
         style: ElevatedButton.styleFrom(
           backgroundColor: _darkBlue,
-          disabledBackgroundColor: _darkBlue.withOpacity(0.45),
           foregroundColor: Colors.white,
           elevation: 0,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(22),
           ),
         ),
-        child: FittedBox(
-          fit: BoxFit.scaleDown,
-          child: isSaving
-              ? const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    ),
-                    SizedBox(width: 10),
-                    Text(
-                      'Saving...',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                )
-              : const Text(
-                  'I Ate — Remind Me in 15 Minutes',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+        child: isSaving
+            ? const Text('Saving...')
+            : Text(
+                hasSavedTreatment
+                    ? 'Back to Chart'
+                    : 'I Ate — Remind Me in 15 Minutes',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
                 ),
-        ),
+              ),
       ),
     );
   }
@@ -1000,145 +1093,6 @@ class _FallbackMascot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: size,
-      height: size,
-      child: CustomPaint(painter: _MascotPainter()),
-    );
+    return Icon(Icons.warning_rounded, color: Colors.white, size: size * 0.6);
   }
-}
-
-class _MascotPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final w = size.width;
-    final h = size.height;
-    final cx = w / 2;
-
-    final bodyPaint = Paint()..color = const Color(0xFF4A90D9);
-
-    final bodyPath = Path()
-      ..moveTo(cx, h * 0.08)
-      ..cubicTo(cx + w * 0.45, h * 0.08, cx + w * 0.45, h * 0.72, cx, h * 0.82)
-      ..cubicTo(cx - w * 0.45, h * 0.72, cx - w * 0.45, h * 0.08, cx, h * 0.08);
-
-    canvas.drawPath(bodyPath, bodyPaint);
-
-    canvas.drawPath(
-      bodyPath,
-      Paint()..color = const Color(0xFF5AA3E8).withOpacity(0.6),
-    );
-
-    final armPaint = Paint()
-      ..color = const Color(0xFF4A90D9)
-      ..strokeWidth = w * 0.13
-      ..strokeCap = StrokeCap.round
-      ..style = PaintingStyle.stroke;
-
-    canvas.drawLine(
-      Offset(cx - w * 0.34, h * 0.48),
-      Offset(cx - w * 0.50, h * 0.32),
-      armPaint,
-    );
-
-    canvas.drawLine(
-      Offset(cx + w * 0.34, h * 0.48),
-      Offset(cx + w * 0.50, h * 0.32),
-      armPaint,
-    );
-
-    final legPaint = Paint()
-      ..color = const Color(0xFF1E4F8A)
-      ..strokeWidth = w * 0.13
-      ..strokeCap = StrokeCap.round
-      ..style = PaintingStyle.stroke;
-
-    canvas.drawLine(
-      Offset(cx - w * 0.18, h * 0.80),
-      Offset(cx - w * 0.18, h * 0.95),
-      legPaint,
-    );
-
-    canvas.drawLine(
-      Offset(cx + w * 0.18, h * 0.80),
-      Offset(cx + w * 0.18, h * 0.95),
-      legPaint,
-    );
-
-    final white = Paint()..color = Colors.white;
-    final pupil = Paint()..color = const Color(0xFF1E3A6E);
-
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: Offset(cx - w * 0.14, h * 0.42),
-        width: w * 0.15,
-        height: h * 0.13,
-      ),
-      white,
-    );
-
-    canvas.drawCircle(Offset(cx - w * 0.14, h * 0.44), w * 0.05, pupil);
-
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: Offset(cx + w * 0.14, h * 0.42),
-        width: w * 0.15,
-        height: h * 0.13,
-      ),
-      white,
-    );
-
-    canvas.drawCircle(Offset(cx + w * 0.14, h * 0.44), w * 0.05, pupil);
-
-    final browPaint = Paint()
-      ..color = const Color(0xFF2563A8)
-      ..strokeWidth = w * 0.035
-      ..strokeCap = StrokeCap.round
-      ..style = PaintingStyle.stroke;
-
-    canvas.drawArc(
-      Rect.fromCenter(
-        center: Offset(cx - w * 0.14, h * 0.35),
-        width: w * 0.18,
-        height: h * 0.08,
-      ),
-      3.4,
-      2.2,
-      false,
-      browPaint,
-    );
-
-    canvas.drawArc(
-      Rect.fromCenter(
-        center: Offset(cx + w * 0.14, h * 0.35),
-        width: w * 0.18,
-        height: h * 0.08,
-      ),
-      3.4,
-      2.2,
-      false,
-      browPaint,
-    );
-
-    final mouthPaint = Paint()
-      ..color = const Color(0xFF2563A8)
-      ..strokeWidth = w * 0.04
-      ..strokeCap = StrokeCap.round
-      ..style = PaintingStyle.stroke;
-
-    canvas.drawArc(
-      Rect.fromCenter(
-        center: Offset(cx, h * 0.59),
-        width: w * 0.30,
-        height: h * 0.10,
-      ),
-      0.3,
-      2.5,
-      false,
-      mouthPaint,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

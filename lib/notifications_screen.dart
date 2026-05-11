@@ -38,6 +38,13 @@ class NotificationsScreen extends StatelessWidget {
           }
 
           final docs = snapshot.data!.docs;
+          for (final doc in docs) {
+            final data = doc.data() as Map<String, dynamic>;
+
+            if (data['isRead'] == false) {
+              doc.reference.update({'isRead': true});
+            }
+          }
 
           return ListView.separated(
             padding: const EdgeInsets.all(16),
