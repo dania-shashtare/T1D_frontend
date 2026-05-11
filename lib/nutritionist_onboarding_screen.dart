@@ -501,7 +501,7 @@ class _NutritionistOnboardingScreenState
         const SizedBox(height: 14),
         _textField(
           controller: workplaceController,
-          label: "Workplace / Clinic / Hospital",
+          label: "your workplace (town_city_street)",
           icon: Icons.business_outlined,
         ),
         const SizedBox(height: 14),
