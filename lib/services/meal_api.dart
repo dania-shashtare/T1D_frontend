@@ -1,9 +1,15 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:flutter/foundation.dart';
 
 class MealApi {
-  //static const String baseUrl = 'http://localhost:5000/api/meals';
-  static const String baseUrl = 'http://10.0.2.2:5000/api/meals';
+  static String get baseUrl {
+    if (kIsWeb) {
+      return 'http://localhost:5000/api/meals';
+    }
+
+    return 'http://10.0.2.2:5000/api/meals';
+  }
 
   static Future<Map<String, dynamic>> calculateMeal({
     required String userId,

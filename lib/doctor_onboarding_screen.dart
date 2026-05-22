@@ -2,7 +2,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'services/onboarding_api.dart';
-import 'patient_screen.dart';
+import 'doctor_web_dashboard.dart';
 
 class DoctorOnboardingScreen extends StatefulWidget {
   final String userId;
@@ -142,7 +142,7 @@ class _DoctorOnboardingScreenState extends State<DoctorOnboardingScreen> {
       Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(
-          builder: (_) => PatientHomeScreen(userId: widget.userId),
+          builder: (_) => DoctorWebDashboard(doctorId: widget.userId),
         ),
         (route) => false,
       );

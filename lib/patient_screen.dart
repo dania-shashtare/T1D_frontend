@@ -110,152 +110,148 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
     _loadReadings();
   }
 
-void _showContactOptions(BuildContext context) {
-  showModalBottomSheet(
-    context: context,
-    backgroundColor: Colors.white,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-    ),
-    builder: (context) {
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(20, 24, 20, 30),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+  void _showContactOptions(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(20, 24, 20, 30),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 45,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade100,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                'Who do you want to contact?',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF0B4F8A),
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              _contactOptionTile(
+                context: context,
+                icon: Icons.medical_services_outlined,
+                title: 'Doctor',
+                subtitle: 'Choose a doctor and start chatting',
+                onTap: () {
+                  Navigator.pop(context);
+
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ContactSpecialistsPage(
+                        role: 'doctor',
+                        currentUserId: widget.userId,
+                      ),
+                    ),
+                  );
+                },
+              ),
+
+              const SizedBox(height: 12),
+
+              _contactOptionTile(
+                context: context,
+                icon: Icons.restaurant_menu_outlined,
+                title: 'Nutritionist',
+                subtitle: 'Choose a nutritionist and start chatting',
+                onTap: () {
+                  Navigator.pop(context);
+
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ContactSpecialistsPage(
+                        role: 'nutritionist',
+                        currentUserId: widget.userId,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _contactOptionTile({
+    required BuildContext context,
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: const Color(0xFFEAF6FF),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: const Color(0xFFD3ECFF)),
+        ),
+        child: Row(
           children: [
             Container(
-              width: 45,
-              height: 5,
+              width: 52,
+              height: 52,
               decoration: BoxDecoration(
-                color: Colors.blue.shade100,
-                borderRadius: BorderRadius.circular(20),
+                color: const Color(0xFFD8ECFF),
+                borderRadius: BorderRadius.circular(16),
               ),
+              child: Icon(icon, color: const Color(0xFF1976C9), size: 28),
             ),
-            const SizedBox(height: 20),
-            const Text(
-              'Who do you want to contact?',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF0B4F8A),
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            _contactOptionTile(
-              context: context,
-              icon: Icons.medical_services_outlined,
-              title: 'Doctor',
-              subtitle: 'Choose a doctor and start chatting',
-              onTap: () {
-                Navigator.pop(context);
-
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => ContactSpecialistsPage(
-                      role: 'doctor',
-                      currentUserId: widget.userId,
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      color: Color(0xFF0B4F8A),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
                     ),
                   ),
-                );
-              },
-            ),
-
-            const SizedBox(height: 12),
-
-            _contactOptionTile(
-              context: context,
-              icon: Icons.restaurant_menu_outlined,
-              title: 'Nutritionist',
-              subtitle: 'Choose a nutritionist and start chatting',
-              onTap: () {
-                Navigator.pop(context);
-
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => ContactSpecialistsPage(
-                      role: 'nutritionist',
-                      currentUserId: widget.userId,
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      color: Colors.blueGrey.shade600,
+                      fontSize: 13,
                     ),
                   ),
-                );
-              },
+                ],
+              ),
+            ),
+            const Icon(
+              Icons.arrow_forward_ios_rounded,
+              color: Color(0xFF8CC7F5),
+              size: 18,
             ),
           ],
         ),
-      );
-    },
-  );
-}
-
-Widget _contactOptionTile({
-  required BuildContext context,
-  required IconData icon,
-  required String title,
-  required String subtitle,
-  required VoidCallback onTap,
-}) {
-  return InkWell(
-    onTap: onTap,
-    borderRadius: BorderRadius.circular(18),
-    child: Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFFEAF6FF),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFD3ECFF)),
       ),
-      child: Row(
-        children: [
-          Container(
-            width: 52,
-            height: 52,
-            decoration: BoxDecoration(
-              color: const Color(0xFFD8ECFF),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Icon(
-              icon,
-              color: const Color(0xFF1976C9),
-              size: 28,
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: Color(0xFF0B4F8A),
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    color: Colors.blueGrey.shade600,
-                    fontSize: 13,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const Icon(
-            Icons.arrow_forward_ios_rounded,
-            color: Color(0xFF8CC7F5),
-            size: 18,
-          ),
-        ],
-      ),
-    ),
-  );
-}
+    );
+  }
 
   @override
   void dispose() {
@@ -1989,7 +1985,7 @@ Widget _contactOptionTile({
   void _showMainMenu() {
     final menuItems = [
       {'icon': Icons.medical_information_outlined, 'label': 'Doctor'},
-       {'icon': Icons.contact_support_outlined, 'label': 'Contact'},
+      {'icon': Icons.contact_support_outlined, 'label': 'Contact'},
       {
         'icon': Icons.chat_bubble_outline_rounded,
         'label': 'Chat / Ask anything',
