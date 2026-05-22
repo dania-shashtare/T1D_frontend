@@ -10,6 +10,7 @@ import 'doctor_onboarding_screen.dart';
 import 'nutritionist_onboarding_screen.dart';
 import 'services/firebase_notification_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'doctor_web_dashboard.dart';
 import 'nutritionist_web_dashboard.dart';
 
 class AuthScreen extends StatefulWidget {
@@ -290,6 +291,13 @@ class _AuthScreenState extends State<AuthScreen> {
             builder: (context) => PatientHomeScreen(userId: userId),
           ),
         );
+      } else if (role == 'doctor') {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => DoctorWebDashboard(doctorId: userId),
+          ),
+        );
       } else if (role == 'nutritionist') {
         Navigator.pushReplacement(
           context,
@@ -301,8 +309,10 @@ class _AuthScreenState extends State<AuthScreen> {
         _snack("This role home page is not linked yet");
       }
     } catch (e) {
+      debugPrint('LOGIN REAL ERROR: $e');
+
       setState(() {
-        signInGeneralError = "Invalid email or password";
+        signInGeneralError = e.toString().replaceAll('Exception: ', '');
       });
     }
   }

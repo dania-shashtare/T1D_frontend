@@ -1,16 +1,35 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:flutter/foundation.dart';
 
 class GlucoseApi {
-  static const String baseUrl = 'http://localhost:5000/api/glucose';
+  static String get baseUrl {
+    if (kIsWeb) {
+      return 'http://localhost:5000/api/glucose';
+    }
+    return 'http://10.0.2.2:5000/api/glucose';
+  }
 
-  // If you run on Android Emulator, use this instead:
-  // static const String baseUrl = 'http://10.0.2.2:5000/api/glucose';
+  static Future<List<Map<String, dynamic>>> getReadings(
+    String userId, {
+    DateTime? from,
+    DateTime? to,
+  }) async {
+    final queryParams = <String, String>{};
 
-  static Future<List<Map<String, dynamic>>> getReadings(String userId) async {
-    final url = Uri.parse('$baseUrl/$userId');
+    if (from != null) {
+      queryParams['from'] = from.toIso8601String();
+    }
 
-    final response = await http.get(url);
+    if (to != null) {
+      queryParams['to'] = to.toIso8601String();
+    }
+
+    final uri = Uri.parse(
+      '$baseUrl/$userId',
+    ).replace(queryParameters: queryParams.isEmpty ? null : queryParams);
+
+    final response = await http.get(uri);
 
     if (response.statusCode == 200) {
       final List data = jsonDecode(response.body);

@@ -1,9 +1,15 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:flutter/foundation.dart';
 
 class AiReportApi {
- static const String baseUrl = 'http://localhost:5000/api';
- //static const String baseUrl = 'http://10.0.2.2:5000/api';
+  static String get baseUrl {
+    if (kIsWeb) {
+      return 'http://localhost:5000/api';
+    }
+
+    return 'http://10.0.2.2:5000/api';
+  }
 
   static Future<Map<String, dynamic>> analyzeReport({
     required Map<String, dynamic> report,
