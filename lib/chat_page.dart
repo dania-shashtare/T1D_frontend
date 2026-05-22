@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:flutter/foundation.dart';
 
 class ChatPage extends StatefulWidget {
   final String currentUserId; // patient userId
@@ -24,7 +25,12 @@ class _ChatPageState extends State<ChatPage> {
   final TextEditingController messageController = TextEditingController();
   final ScrollController scrollController = ScrollController();
 
-  static const String baseUrl = 'http://10.0.2.2:5000/api';
+  static String get baseUrl {
+    if (kIsWeb) {
+      return 'http://localhost:5000/api';
+    }
+    return 'http://10.0.2.2:5000/api';
+  }
 
   List messages = [];
   bool isLoading = true;
