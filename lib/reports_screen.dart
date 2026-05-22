@@ -12,8 +12,9 @@ import 'services/ai_report_api.dart';
 
 class ReportsScreen extends StatefulWidget {
   final String userId;
+  final bool embedded;
 
-  const ReportsScreen({super.key, required this.userId});
+  const ReportsScreen({super.key, required this.userId, this.embedded = false});
 
   @override
   State<ReportsScreen> createState() => _ReportsScreenState();
@@ -71,11 +72,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
         errorMessage = null;
       });
     } catch (e) {
+      debugPrint('GLUCOSE REPORT ERROR: $e');
+
       if (!mounted) return;
 
       setState(() {
         isLoading = false;
-        errorMessage = 'Failed to load report data';
+        errorMessage = e.toString();
       });
     }
   }
@@ -1074,59 +1077,102 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   @override
+  @override
   Widget build(BuildContext context) {
     final stats = _buildStats();
 
-    return Scaffold(
-      backgroundColor: _pageBg,
-      body: SafeArea(
-        child: RefreshIndicator(
-          onRefresh: _loadReadings,
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final isWide = constraints.maxWidth >= 1000;
+    final content = SafeArea(
+      child: RefreshIndicator(
+        onRefresh: _loadReadings,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final isWide = constraints.maxWidth >= 1000;
 
-              return SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: EdgeInsets.fromLTRB(
-                  isWide ? 28 : 16,
-                  14,
-                  isWide ? 28 : 16,
-                  24,
-                ),
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(maxWidth: isWide ? 1360 : 1180),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _buildHeader(),
-                        const SizedBox(height: 14),
-                        _buildTabs(),
-                        const SizedBox(height: 14),
-                        if (isLoading)
-                          const Padding(
-                            padding: EdgeInsets.only(top: 120),
-                            child: Center(child: CircularProgressIndicator()),
-                          )
-                        else if (errorMessage != null)
-                          _emptyCard(errorMessage!)
-                        else if (stats.totalReadings == 0)
-                          _emptyCard('No readings available for this period.')
-                        else if (isWide)
-                          _buildWideReportLayout(stats)
-                        else
-                          _buildMobileReportLayout(stats),
-                      ],
-                    ),
+            return SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: EdgeInsets.fromLTRB(
+                isWide ? 28 : 16,
+                widget.embedded ? 0 : 14,
+                isWide ? 28 : 16,
+                24,
+              ),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: isWide ? 1360 : 1180),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (!widget.embedded) _buildHeader(),
+                      if (!widget.embedded) const SizedBox(height: 14),
+
+                      if (widget.embedded)
+                        Row(
+                          children: [
+                            const Expanded(
+                              child: Text(
+                                'Glucose Report',
+                                style: TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w800,
+                                  color: _darkBlue,
+                                ),
+                              ),
+                            ),
+                            _circleButton(
+                              icon: Icons.download_rounded,
+                              onTap: () {
+                                final stats = _buildStats();
+
+                                if (stats.totalReadings == 0) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'No readings available to export.',
+                                      ),
+                                    ),
+                                  );
+                                  return;
+                                }
+
+                                _exportReportPdf(stats);
+                              },
+                            ),
+                          ],
+                        ),
+
+                      if (widget.embedded) const SizedBox(height: 14),
+
+                      _buildTabs(),
+                      const SizedBox(height: 14),
+
+                      if (isLoading)
+                        const Padding(
+                          padding: EdgeInsets.only(top: 120),
+                          child: Center(child: CircularProgressIndicator()),
+                        )
+                      else if (errorMessage != null)
+                        _emptyCard(errorMessage!)
+                      else if (stats.totalReadings == 0)
+                        _emptyCard('No readings available for this period.')
+                      else if (isWide)
+                        _buildWideReportLayout(stats)
+                      else
+                        _buildMobileReportLayout(stats),
+                    ],
                   ),
                 ),
-              );
-            },
-          ),
+              ),
+            );
+          },
         ),
       ),
     );
+
+    if (widget.embedded) {
+      return Container(color: _pageBg, child: content);
+    }
+
+    return Scaffold(backgroundColor: _pageBg, body: content);
   }
 
   Widget _buildMobileReportLayout(ReportStats stats) {

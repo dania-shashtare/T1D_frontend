@@ -228,7 +228,14 @@ class ReportSummary {
 }
 
 class MealReportApp extends StatelessWidget {
-  const MealReportApp({super.key});
+  final String? patientId;
+  final bool openedFromNutritionist;
+
+  const MealReportApp({
+    super.key,
+    this.patientId,
+    this.openedFromNutritionist = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -241,13 +248,25 @@ class MealReportApp extends StatelessWidget {
         useMaterial3: true,
         scaffoldBackgroundColor: kLight,
       ),
-      home: const MealReportScreen(),
+      home: MealReportScreen(
+        patientId: patientId,
+        openedFromNutritionist: openedFromNutritionist,
+      ),
     );
   }
 }
 
 class MealReportScreen extends StatefulWidget {
-  const MealReportScreen({super.key});
+  final String? patientId;
+  final bool openedFromNutritionist;
+  final bool embedded;
+
+  const MealReportScreen({
+    super.key,
+    this.patientId,
+    this.openedFromNutritionist = false,
+    this.embedded = false,
+  });
 
   @override
   State<MealReportScreen> createState() => _MealReportScreenState();
@@ -274,7 +293,10 @@ class _MealReportScreenState extends State<MealReportScreen> {
     });
 
     try {
-      final userId = await getCurrentUserId();
+      final userId =
+          widget.patientId != null && widget.patientId!.trim().isNotEmpty
+          ? widget.patientId!.trim()
+          : await getCurrentUserId();
 
       final data = await MealReportApi.getMealReport(
         userId: userId,
@@ -309,21 +331,12 @@ class _MealReportScreenState extends State<MealReportScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _records.isEmpty ? null : _exportPdf,
-        backgroundColor: kPrimary,
-        icon: const Icon(Icons.send, color: Colors.white),
-        label: const Text(
-          'Send to doctor',
-          style: TextStyle(color: Colors.white),
-        ),
-      ),
-      body: RefreshIndicator(
-        onRefresh: _loadReport,
-        color: kAccent,
-        child: CustomScrollView(
-          slivers: [
+    final content = RefreshIndicator(
+      onRefresh: _loadReport,
+      color: kAccent,
+      child: CustomScrollView(
+        slivers: [
+          if (!widget.embedded)
             SliverAppBar(
               pinned: true,
               expandedHeight: 130,
@@ -333,6 +346,11 @@ class _MealReportScreenState extends State<MealReportScreen> {
               leading: IconButton(
                 icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white),
                 onPressed: () async {
+                  if (widget.openedFromNutritionist) {
+                    Navigator.pop(context);
+                    return;
+                  }
+
                   final prefs = await SharedPreferences.getInstance();
                   final userId = prefs.getString('userId') ?? '';
 
@@ -417,159 +435,207 @@ class _MealReportScreenState extends State<MealReportScreen> {
               ],
             ),
 
+          if (widget.embedded)
             SliverToBoxAdapter(
-              child: Container(
-                color: kAccent,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 10,
-                ),
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      _filterBtn('All', 'all'),
-                      const SizedBox(width: 8),
-                      _filterBtn('Today', 'today'),
-                      const SizedBox(width: 8),
-                      _filterBtn('This week', 'week'),
-                      const SizedBox(width: 8),
-                      _filterBtn('This month', 'month'),
-                    ],
-                  ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                child: Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'Meal Report',
+                        style: TextStyle(
+                          color: kPrimary,
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: _records.isEmpty ? null : _exportPdf,
+                      icon: const Icon(Icons.picture_as_pdf, color: kPrimary),
+                      tooltip: 'Export PDF',
+                    ),
+                  ],
                 ),
               ),
             ),
 
-            if (_loading)
-              const SliverFillRemaining(
-                child: Center(child: CircularProgressIndicator(color: kAccent)),
-              )
-            else if (_error != null)
-              SliverFillRemaining(
-                child: Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Text(
-                      _error!,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.red, fontSize: 14),
-                    ),
-                  ),
+          SliverToBoxAdapter(
+            child: Container(
+              color: widget.embedded ? Colors.transparent : kAccent,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    _filterBtn('All', 'all'),
+                    const SizedBox(width: 8),
+                    _filterBtn('Today', 'today'),
+                    const SizedBox(width: 8),
+                    _filterBtn('This week', 'week'),
+                    const SizedBox(width: 8),
+                    _filterBtn('This month', 'month'),
+                  ],
                 ),
-              )
-            else if (_records.isEmpty)
-              const SliverFillRemaining(
-                child: Center(
-                  child: Text(
-                    'No meals saved for this period yet.',
-                    style: TextStyle(
-                      color: kPrimary,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-              )
-            else ...[
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      final isWide = constraints.maxWidth > 700;
-                      final cardWidth = isWide
-                          ? (constraints.maxWidth - 10) / 2
-                          : constraints.maxWidth;
+              ),
+            ),
+          ),
 
-                      return Wrap(
-                        spacing: 10,
-                        runSpacing: 10,
-                        children: [
-                          SizedBox(
-                            width: cardWidth,
-                            height: 118,
-                            child: _StatCard(
-                              label: 'Total carbs',
-                              value:
-                                  '${_summary.totalCarbs.toStringAsFixed(0)}g',
-                              sub: '${_summary.totalMeals} meals logged',
-                            ),
-                          ),
-                          SizedBox(
-                            width: cardWidth,
-                            height: 118,
-                            child: _StatCard(
-                              label: 'Total insulin',
-                              value:
-                                  '${_summary.totalInsulin.toStringAsFixed(0)}u',
-                              sub: 'Units for selected period',
-                            ),
-                          ),
-                          SizedBox(
-                            width: cardWidth,
-                            height: 118,
-                            child: _StatCard(
-                              label: 'Daily average',
-                              value:
-                                  '${_summary.dailyAverage.toStringAsFixed(0)}g',
-                              sub:
-                                  'Goal: ${_summary.dailyCarbGoal.toInt()}g/day',
-                              showBar: true,
-                              barValue:
-                                  _summary.dailyAverage /
-                                  _summary.dailyCarbGoal,
-                            ),
-                          ),
-                          SizedBox(
-                            width: cardWidth,
-                            height: 118,
-                            child: _StatCard(
-                              label: 'Highest day',
-                              value:
-                                  '${_summary.highestDay.toStringAsFixed(0)}g',
-                              sub: 'Peak daily intake',
-                            ),
-                          ),
-                        ],
-                      );
-                    },
+          if (_loading)
+            const SliverFillRemaining(
+              child: Center(child: CircularProgressIndicator(color: kAccent)),
+            )
+          else if (_error != null)
+            SliverFillRemaining(
+              child: Center(
+                child: Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Text(
+                    _error!,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.red, fontSize: 14),
                   ),
                 ),
               ),
+            )
+          else if (_records.isEmpty)
+            const SliverFillRemaining(
+              child: Center(
+                child: Text(
+                  'No meals saved for this period yet.',
+                  style: TextStyle(
+                    color: kPrimary,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            )
+          else ...[
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final isWide = constraints.maxWidth > 700;
+                    final cardWidth = isWide
+                        ? (constraints.maxWidth - 10) / 2
+                        : constraints.maxWidth;
 
-              SliverToBoxAdapter(child: _ChartSection(data: _records)),
-
-              SliverToBoxAdapter(child: _MealDetailsSection(data: _records)),
-
-              const SliverToBoxAdapter(child: SizedBox(height: 90)),
-            ],
+                    return Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      children: [
+                        SizedBox(
+                          width: cardWidth,
+                          height: 118,
+                          child: _StatCard(
+                            label: 'Total carbs',
+                            value: '${_summary.totalCarbs.toStringAsFixed(0)}g',
+                            sub: '${_summary.totalMeals} meals logged',
+                          ),
+                        ),
+                        SizedBox(
+                          width: cardWidth,
+                          height: 118,
+                          child: _StatCard(
+                            label: 'Total insulin',
+                            value:
+                                '${_summary.totalInsulin.toStringAsFixed(0)}u',
+                            sub: 'Units for selected period',
+                          ),
+                        ),
+                        SizedBox(
+                          width: cardWidth,
+                          height: 118,
+                          child: _StatCard(
+                            label: 'Daily average',
+                            value:
+                                '${_summary.dailyAverage.toStringAsFixed(0)}g',
+                            sub: 'Goal: ${_summary.dailyCarbGoal.toInt()}g/day',
+                            showBar: true,
+                            barValue:
+                                _summary.dailyAverage / _summary.dailyCarbGoal,
+                          ),
+                        ),
+                        SizedBox(
+                          width: cardWidth,
+                          height: 118,
+                          child: _StatCard(
+                            label: 'Highest day',
+                            value: '${_summary.highestDay.toStringAsFixed(0)}g',
+                            sub: 'Peak daily intake',
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ),
+            SliverToBoxAdapter(child: _ChartSection(data: _records)),
+            SliverToBoxAdapter(child: _MealDetailsSection(data: _records)),
+            const SliverToBoxAdapter(child: SizedBox(height: 90)),
           ],
+        ],
+      ),
+    );
+
+    if (widget.embedded) {
+      return Container(color: kLight, child: content);
+    }
+
+    return Scaffold(
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _records.isEmpty ? null : _exportPdf,
+        backgroundColor: kPrimary,
+        icon: Icon(
+          widget.openedFromNutritionist ? Icons.picture_as_pdf : Icons.send,
+          color: Colors.white,
+        ),
+        label: Text(
+          widget.openedFromNutritionist ? 'Export PDF' : 'Send to doctor',
+          style: const TextStyle(color: Colors.white),
         ),
       ),
+      body: content,
     );
   }
 
   Widget _filterBtn(String label, String value) {
     final selected = _filter == value;
 
+    final Color selectedBg = widget.embedded ? kAccent : Colors.white;
+    final Color unselectedBg = widget.embedded
+        ? Colors.white
+        : Colors.transparent;
+
+    final Color selectedText = widget.embedded ? Colors.white : kAccent;
+    final Color unselectedText = widget.embedded ? kPrimary : Colors.white;
+
+    final Color selectedBorder = widget.embedded ? kAccent : Colors.white;
+    final Color unselectedBorder = widget.embedded
+        ? const Color(0xFFBBDEFB)
+        : Colors.white54;
+
     return GestureDetector(
       onTap: () => _changeFilter(value),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
         decoration: BoxDecoration(
-          color: selected ? Colors.white : Colors.transparent,
+          color: selected ? selectedBg : unselectedBg,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: selected ? Colors.white : Colors.white54,
+            color: selected ? selectedBorder : unselectedBorder,
             width: 1,
           ),
         ),
         child: Text(
           label,
           style: TextStyle(
-            color: selected ? kAccent : Colors.white,
-            fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+            color: selected ? selectedText : unselectedText,
+            fontWeight: selected ? FontWeight.bold : FontWeight.w600,
             fontSize: 13,
           ),
         ),

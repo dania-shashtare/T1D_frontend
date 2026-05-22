@@ -10,6 +10,7 @@ import 'doctor_onboarding_screen.dart';
 import 'nutritionist_onboarding_screen.dart';
 import 'services/firebase_notification_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'nutritionist_web_dashboard.dart';
 
 class AuthScreen extends StatefulWidget {
   final bool startInSignUp;
@@ -287,6 +288,13 @@ class _AuthScreenState extends State<AuthScreen> {
           context,
           MaterialPageRoute(
             builder: (context) => PatientHomeScreen(userId: userId),
+          ),
+        );
+      } else if (role == 'nutritionist') {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => NutritionistWebDashboard(userId: userId),
           ),
         );
       } else {
