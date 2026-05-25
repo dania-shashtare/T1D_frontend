@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/nutritionist_appointment_api.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'payment_screen.dart';
 
 class ContactNutritionistPage extends StatefulWidget {
   final String patientId;
@@ -216,187 +217,193 @@ class _ContactNutritionistPageState extends State<ContactNutritionistPage> {
     }
   }
 
- Future<void> showEditAppointmentDialog(
-  Map<String, dynamic> appointment,
-) async {
-  String selectedVisitType = appointment['visitType'] ?? 'online';
-  String? selectedDay = appointment['day'];
-  String? selectedTime = appointment['time'];
-
-  List<dynamic> editAvailability = [];
-  List<String> editDays = [];
-  List<String> editSlots = [];
-
-  Future<void> loadEditAvailability(
-    void Function(void Function()) setDialogState,
+  Future<void> showEditAppointmentDialog(
+    Map<String, dynamic> appointment,
   ) async {
-    final data = await NutritionistAppointmentApi.getAvailability(
-      nutritionistId: appointment['nutritionistId'] is Map
-          ? appointment['nutritionistId']['_id']
-          : appointment['nutritionistId'].toString(),
-      visitType: selectedVisitType,
-    );
+    String selectedVisitType = appointment['visitType'] ?? 'online';
+    String? selectedDay = appointment['day'];
+    String? selectedTime = appointment['time'];
 
-    editAvailability = data;
-    editDays = data.map((e) => e['day'].toString()).toList();
+    List<dynamic> editAvailability = [];
+    List<String> editDays = [];
+    List<String> editSlots = [];
 
-    if (selectedDay != null && !editDays.contains(selectedDay)) {
-      editDays.insert(0, selectedDay!);
-    }
-
-    final dayData = editAvailability.firstWhere(
-      (item) => item['day'] == selectedDay,
-      orElse: () => null,
-    );
-
-    editSlots = List<String>.from(dayData?['slots'] ?? []);
-
-    if (selectedTime != null && !editSlots.contains(selectedTime)) {
-      editSlots.insert(0, selectedTime!);
-    }
-
-    setDialogState(() {});
-  }
-
-  await showDialog(
-    context: context,
-    builder: (_) {
-      return StatefulBuilder(
-        builder: (context, setDialogState) {
-          if (editAvailability.isEmpty) {
-            Future.microtask(() => loadEditAvailability(setDialogState));
-          }
-
-          return AlertDialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(22),
-            ),
-            title: const Text('Edit Appointment'),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  DropdownButtonFormField<String>(
-                    value: selectedVisitType,
-                    decoration: const InputDecoration(
-                      labelText: 'Visit Type',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: const [
-                      DropdownMenuItem(value: 'online', child: Text('Online')),
-                      DropdownMenuItem(value: 'clinic', child: Text('Clinic')),
-                    ],
-                    onChanged: (value) async {
-                      selectedVisitType = value ?? 'online';
-                      selectedDay = null;
-                      selectedTime = null;
-                      editAvailability = [];
-                      editDays = [];
-                      editSlots = [];
-
-                      setDialogState(() {});
-                      await loadEditAvailability(setDialogState);
-                    },
-                  ),
-                  const SizedBox(height: 14),
-                  DropdownButtonFormField<String>(
-                    value: selectedDay,
-                    decoration: const InputDecoration(
-                      labelText: 'Day',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: editDays.map((day) {
-                      return DropdownMenuItem<String>(
-                        value: day,
-                        child: Text(day),
-                      );
-                    }).toList(),
-                    onChanged: (value) {
-                      selectedDay = value;
-                      selectedTime = null;
-
-                      final dayData = editAvailability.firstWhere(
-                        (item) => item['day'] == selectedDay,
-                        orElse: () => null,
-                      );
-
-                      editSlots = List<String>.from(dayData?['slots'] ?? []);
-                      setDialogState(() {});
-                    },
-                  ),
-                  const SizedBox(height: 14),
-                  DropdownButtonFormField<String>(
-                    value: selectedTime,
-                    decoration: const InputDecoration(
-                      labelText: 'Time',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: editSlots.map((time) {
-                      return DropdownMenuItem<String>(
-                        value: time,
-                        child: Text(time),
-                      );
-                    }).toList(),
-                    onChanged: (value) {
-                      selectedTime = value;
-                      setDialogState(() {});
-                    },
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Close'),
-              ),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xff1769B5),
-                  foregroundColor: Colors.white,
-                ),
-                onPressed: () async {
-                  if (selectedDay == null || selectedTime == null) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Please choose day and time'),
-                      ),
-                    );
-                    return;
-                  }
-
-                  try {
-                    await NutritionistAppointmentApi.updateAppointment(
-                      appointmentId: appointment['_id'],
-                      visitType: selectedVisitType,
-                      day: selectedDay!,
-                      time: selectedTime!,
-                    );
-
-                    Navigator.pop(context);
-
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Appointment updated successfully'),
-                      ),
-                    );
-
-                    loadPage();
-                  } catch (e) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(e.toString())),
-                    );
-                  }
-                },
-                child: const Text('Save'),
-              ),
-            ],
-          );
-        },
+    Future<void> loadEditAvailability(
+      void Function(void Function()) setDialogState,
+    ) async {
+      final data = await NutritionistAppointmentApi.getAvailability(
+        nutritionistId: appointment['nutritionistId'] is Map
+            ? appointment['nutritionistId']['_id']
+            : appointment['nutritionistId'].toString(),
+        visitType: selectedVisitType,
       );
-    },
-  );
-}
+
+      editAvailability = data;
+      editDays = data.map((e) => e['day'].toString()).toList();
+
+      if (selectedDay != null && !editDays.contains(selectedDay)) {
+        editDays.insert(0, selectedDay!);
+      }
+
+      final dayData = editAvailability.firstWhere(
+        (item) => item['day'] == selectedDay,
+        orElse: () => null,
+      );
+
+      editSlots = List<String>.from(dayData?['slots'] ?? []);
+
+      if (selectedTime != null && !editSlots.contains(selectedTime)) {
+        editSlots.insert(0, selectedTime!);
+      }
+
+      setDialogState(() {});
+    }
+
+    await showDialog(
+      context: context,
+      builder: (_) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            if (editAvailability.isEmpty) {
+              Future.microtask(() => loadEditAvailability(setDialogState));
+            }
+
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(22),
+              ),
+              title: const Text('Edit Appointment'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    DropdownButtonFormField<String>(
+                      value: selectedVisitType,
+                      decoration: const InputDecoration(
+                        labelText: 'Visit Type',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'online',
+                          child: Text('Online'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'clinic',
+                          child: Text('Clinic'),
+                        ),
+                      ],
+                      onChanged: (value) async {
+                        selectedVisitType = value ?? 'online';
+                        selectedDay = null;
+                        selectedTime = null;
+                        editAvailability = [];
+                        editDays = [];
+                        editSlots = [];
+
+                        setDialogState(() {});
+                        await loadEditAvailability(setDialogState);
+                      },
+                    ),
+                    const SizedBox(height: 14),
+                    DropdownButtonFormField<String>(
+                      value: selectedDay,
+                      decoration: const InputDecoration(
+                        labelText: 'Day',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: editDays.map((day) {
+                        return DropdownMenuItem<String>(
+                          value: day,
+                          child: Text(day),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        selectedDay = value;
+                        selectedTime = null;
+
+                        final dayData = editAvailability.firstWhere(
+                          (item) => item['day'] == selectedDay,
+                          orElse: () => null,
+                        );
+
+                        editSlots = List<String>.from(dayData?['slots'] ?? []);
+                        setDialogState(() {});
+                      },
+                    ),
+                    const SizedBox(height: 14),
+                    DropdownButtonFormField<String>(
+                      value: selectedTime,
+                      decoration: const InputDecoration(
+                        labelText: 'Time',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: editSlots.map((time) {
+                        return DropdownMenuItem<String>(
+                          value: time,
+                          child: Text(time),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        selectedTime = value;
+                        setDialogState(() {});
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Close'),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xff1769B5),
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: () async {
+                    if (selectedDay == null || selectedTime == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Please choose day and time'),
+                        ),
+                      );
+                      return;
+                    }
+
+                    try {
+                      await NutritionistAppointmentApi.updateAppointment(
+                        appointmentId: appointment['_id'],
+                        visitType: selectedVisitType,
+                        day: selectedDay!,
+                        time: selectedTime!,
+                      );
+
+                      Navigator.pop(context);
+
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Appointment updated successfully'),
+                        ),
+                      );
+
+                      loadPage();
+                    } catch (e) {
+                      ScaffoldMessenger.of(
+                        context,
+                      ).showSnackBar(SnackBar(content: Text(e.toString())));
+                    }
+                  },
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -459,7 +466,9 @@ class _ContactNutritionistPageState extends State<ContactNutritionistPage> {
     final meetingLink = appointment?['meetingLink'] ?? '';
 
     final isOnline = visitType.toString().toLowerCase() == 'online';
-
+    final paymentStatus = appointment?['paymentStatus'] ?? 'not_required';
+    final isPaid = paymentStatus == 'paid';
+    final isPendingPayment = paymentStatus == 'pending';
     return ListView(
       padding: const EdgeInsets.all(18),
       children: [
@@ -581,6 +590,69 @@ class _ContactNutritionistPageState extends State<ContactNutritionistPage> {
                     const SizedBox(height: 26),
 
                     if (isOnline)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 14),
+                        child: Row(
+                          children: [
+                            Icon(
+                              isPaid
+                                  ? Icons.check_circle
+                                  : Icons.access_time_filled,
+                              color: isPaid ? Colors.green : Colors.orange,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              isPaid ? 'Payment Paid' : 'Payment Pending',
+                              style: TextStyle(
+                                color: isPaid ? Colors.green : Colors.orange,
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                    if (isOnline && isPendingPayment)
+                      SizedBox(
+                        width: double.infinity,
+                        height: 56,
+                        child: ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xff1769B5),
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                          ),
+                          onPressed: () async {
+                            final paid = await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => PaymentScreen(
+                                  appointmentId: appointment['_id'],
+                                  appointmentType: 'nutritionist',
+                                  amount: appointment['paymentAmount'] ?? 10,
+                                ),
+                              ),
+                            );
+
+                            if (paid == true) {
+                              loadPage();
+                            }
+                          },
+                          icon: const Icon(Icons.payment),
+                          label: const Text(
+                            'Pay Now',
+                            style: TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+
+                    if (isOnline && isPaid)
                       SizedBox(
                         width: double.infinity,
                         height: 56,
@@ -936,7 +1008,7 @@ class _BookNutritionistPageState extends State<BookNutritionistPage> {
     try {
       final data = await NutritionistAppointmentApi.getAvailability(
         nutritionistId: nutritionistUserId,
-        visitType: 'online',
+        visitType: selectedVisitType,
       );
 
       setState(() {
@@ -976,7 +1048,7 @@ class _BookNutritionistPageState extends State<BookNutritionistPage> {
     setState(() => isBooking = true);
 
     try {
-      await NutritionistAppointmentApi.bookAppointment(
+      final result = await NutritionistAppointmentApi.bookAppointment(
         patientId: widget.patientId,
         nutritionistId: nutritionistUserId,
         visitType: selectedVisitType,
@@ -986,11 +1058,45 @@ class _BookNutritionistPageState extends State<BookNutritionistPage> {
 
       setState(() => isBooking = false);
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Appointment booked successfully')),
-      );
+      final appointment = result['appointment'];
 
-      Navigator.pop(context, true);
+      if (appointment['visitType'] == 'online' &&
+          appointment['paymentStatus'] == 'pending') {
+        final paid = await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => PaymentScreen(
+              appointmentId: appointment['_id'],
+              appointmentType: 'nutritionist',
+              amount: appointment['paymentAmount'] ?? 10,
+            ),
+          ),
+        );
+
+        if (paid == true) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Payment completed and appointment booked'),
+            ),
+          );
+
+          Navigator.pop(context, true);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Appointment created, payment is still pending'),
+            ),
+          );
+
+          Navigator.pop(context, true);
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Appointment booked successfully')),
+        );
+
+        Navigator.pop(context, true);
+      }
     } catch (e) {
       setState(() => isBooking = false);
 
@@ -1288,6 +1394,8 @@ class _BookNutritionistPageState extends State<BookNutritionistPage> {
           setState(() {
             selectedVisitType = value;
           });
+
+          loadAvailability();
         },
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),

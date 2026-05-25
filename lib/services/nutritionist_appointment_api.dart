@@ -83,30 +83,33 @@ class NutritionistAppointmentApi {
     }
   }
 
-  static Future<void> bookAppointment({
-    required String patientId,
-    required String nutritionistId,
-    required String visitType,
-    required String day,
-    required String time,
-  }) async {
-    final url = Uri.parse(baseUrl);
+static Future<Map<String, dynamic>> bookAppointment({
+  required String patientId,
+  required String nutritionistId,
+  required String visitType,
+  required String day,
+  required String time,
+}) async {
+  final url = Uri.parse(baseUrl);
 
-    final response = await http.post(
-      url,
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'patientId': patientId,
-        'nutritionistId': nutritionistId,
-        'visitType': visitType,
-        'day': day,
-        'time': time,
-      }),
-    );
+  final response = await http.post(
+    url,
+    headers: {'Content-Type': 'application/json'},
+    body: jsonEncode({
+      'patientId': patientId,
+      'nutritionistId': nutritionistId,
+      'visitType': visitType,
+      'day': day,
+      'time': time,
+    }),
+  );
 
-    if (response.statusCode != 201) {
-      final data = jsonDecode(response.body);
-      throw Exception(data['message'] ?? 'Failed to book appointment');
-    }
+  final data = jsonDecode(response.body);
+
+  if (response.statusCode == 201) {
+    return data;
+  } else {
+    throw Exception(data['message'] ?? 'Failed to book appointment');
   }
+}
 }

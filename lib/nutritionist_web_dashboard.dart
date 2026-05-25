@@ -329,6 +329,7 @@ class _NutritionistWebDashboardState extends State<NutritionistWebDashboard> {
     fetchNutritionistDashboard();
     _scheduleNutritionistAppointmentReminders();
     _startNutritionistAppointmentWatcher();
+    fetchSavedAvailabilities();
   }
 
   @override
@@ -1453,6 +1454,9 @@ class _NutritionistWebDashboardState extends State<NutritionistWebDashboard> {
     }
   }
 
+  List<dynamic> savedAvailabilities = [];
+  bool isLoadingAvailabilities = false;
+  String? editingAvailabilityId;
   String activeSlotDay = 'Sunday';
 
   Set<String> selectedSlotDays = {'Sunday'};
@@ -1881,7 +1885,25 @@ class _NutritionistWebDashboardState extends State<NutritionistWebDashboard> {
             ),
 
             const SizedBox(height: 22),
+            const SizedBox(height: 18),
 
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Saved Schedules',
+                style: TextStyle(
+                  color: darkText,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 12),
+
+            _buildSavedAvailabilitiesList(),
+
+            const SizedBox(height: 22),
             SizedBox(
               width: double.infinity,
               height: 54,
@@ -2112,6 +2134,123 @@ class _NutritionistWebDashboardState extends State<NutritionistWebDashboard> {
     );
   }
 
+  Future<void> fetchSavedAvailabilities() async {
+    try {
+      setState(() {
+        isLoadingAvailabilities = true;
+      });
+
+      final url = Uri.parse(
+        '$baseUrl/api/nutritionist-availabilities/nutritionist/${widget.userId}',
+      );
+
+      final response = await http.get(url);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+
+        setState(() {
+          savedAvailabilities = data['availabilities'] ?? [];
+          isLoadingAvailabilities = false;
+        });
+      } else {
+        debugPrint('Failed to fetch availabilities: ${response.body}');
+        setState(() {
+          isLoadingAvailabilities = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Fetch availabilities error: $e');
+      setState(() {
+        isLoadingAvailabilities = false;
+      });
+    }
+  }
+
+  void editAvailability(dynamic availability) {
+    final id = availability['_id']?.toString();
+    final day = availability['day']?.toString() ?? 'Sunday';
+    final visitType = availability['visitType']?.toString() ?? 'online';
+    final slots = availability['slots'];
+
+    setState(() {
+      editingAvailabilityId = id;
+      activeSlotDay = day;
+      selectedVisitType = visitType;
+
+      selectedSlotDays = {day};
+
+      selectedSlotsByDay = {
+        day: slots is List
+            ? slots.map((e) => e.toString()).toSet()
+            : <String>{},
+      };
+    });
+  }
+
+  Future<void> deleteAvailability(String availabilityId) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFFF8FCFF),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+          title: Text(
+            'Delete Schedule',
+            style: TextStyle(color: darkText, fontWeight: FontWeight.w800),
+          ),
+          content: const Text(
+            'Are you sure you want to delete this saved schedule?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text('Cancel', style: TextStyle(color: subText)),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: deepBlue,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirm != true) return;
+
+    try {
+      final url = Uri.parse(
+        '$baseUrl/api/nutritionist-availabilities/$availabilityId',
+      );
+
+      final response = await http.delete(url);
+
+      if (response.statusCode == 200) {
+        await fetchSavedAvailabilities();
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Schedule deleted successfully')),
+        );
+      } else {
+        debugPrint('Delete availability failed: ${response.body}');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to delete schedule')),
+        );
+      }
+    } catch (e) {
+      debugPrint('Delete availability error: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Error while deleting schedule')),
+      );
+    }
+  }
+
   Future<void> saveAvailableSlots() async {
     final schedules = selectedSlotDays
         .map((day) {
@@ -2155,6 +2294,10 @@ class _NutritionistWebDashboardState extends State<NutritionistWebDashboard> {
       });
 
       if (response.statusCode == 200 || response.statusCode == 201) {
+        editingAvailabilityId = null;
+
+        await fetchSavedAvailabilities();
+
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Schedule saved successfully')),
         );
@@ -2453,6 +2596,9 @@ class _NutritionistWebDashboardState extends State<NutritionistWebDashboard> {
                       fetchNutritionistAppointments();
                       fetchNutritionistMealPlans();
                     }
+                    if (menuItems[index] == 'Available Slots') {
+                      fetchSavedAvailabilities();
+                    }
                   },
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 180),
@@ -2524,6 +2670,113 @@ class _NutritionistWebDashboardState extends State<NutritionistWebDashboard> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildSavedAvailabilitiesList() {
+    if (isLoadingAvailabilities) {
+      return Padding(
+        padding: const EdgeInsets.all(20),
+        child: Center(child: CircularProgressIndicator(color: primaryBlue)),
+      );
+    }
+
+    if (savedAvailabilities.isEmpty) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: const Color(0xFFEAF6FF),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: borderColor),
+        ),
+        child: Text(
+          'No saved schedules yet.',
+          style: TextStyle(color: subText, fontWeight: FontWeight.w700),
+        ),
+      );
+    }
+
+    return Column(
+      children: savedAvailabilities.map((availability) {
+        final id = availability['_id']?.toString() ?? '';
+        final day = availability['day']?.toString() ?? '-';
+        final visitType = availability['visitType']?.toString() ?? '-';
+        final slots = availability['slots'];
+
+        final slotList = slots is List
+            ? slots.map((e) => e.toString()).toList()
+            : <String>[];
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFFEAF6FF),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: borderColor),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: deepBlue,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(
+                  Icons.event_available_rounded,
+                  color: Colors.white,
+                ),
+              ),
+
+              const SizedBox(width: 14),
+
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '$day • ${visitType.toUpperCase()}',
+                      style: TextStyle(
+                        color: darkText,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      slotList.isEmpty ? 'No times' : slotList.join('  •  '),
+                      style: TextStyle(
+                        color: subText,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              TextButton.icon(
+                onPressed: id.isEmpty ? null : () => deleteAvailability(id),
+                icon: const Icon(
+                  Icons.delete_outline_rounded,
+                  color: Color(0xFFD32F2F),
+                  size: 18,
+                ),
+                label: const Text(
+                  'Delete',
+                  style: TextStyle(
+                    color: Color(0xFFD32F2F),
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      }).toList(),
     );
   }
 
