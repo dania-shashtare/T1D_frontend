@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'services/onboarding_api.dart';
-import 'patient_screen.dart';
+import 'family_home_screen.dart';
 import 'auth_screen.dart';
 
 class ParentOnboardingScreen extends StatefulWidget {
@@ -113,9 +113,12 @@ class _ParentOnboardingScreenState extends State<ParentOnboardingScreen> {
     );
   }
 
-  void _goToPatientHome(String userId) {
+  void _goToFamilyHome(String patientId) {
     Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => PatientHomeScreen(userId: userId)),
+      MaterialPageRoute(
+        builder: (_) =>
+            FamilyHomeScreen(familyUserId: widget.userId, patientId: patientId),
+      ),
       (route) => false,
     );
   }
@@ -210,7 +213,7 @@ class _ParentOnboardingScreenState extends State<ParentOnboardingScreen> {
 
       if (!mounted) return;
 
-      _goToPatientHome(linkedPatientId!);
+      _goToFamilyHome(linkedPatientId!);
     } catch (e) {
       _showSnack(e.toString().replaceAll("Exception: ", ""));
     } finally {

@@ -1,17 +1,35 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'notification_service.dart';
-import 'auth_screen.dart';
+import 'services/appointment_reminder_service.dart';
 import 'firebase_options.dart';
+import 'notification_service.dart';
 import 'services/firebase_notification_service.dart';
+import 'doctor_web_dashboard.dart';
+import 'nutritionist_web_dashboard.dart';
+import 'auth_screen.dart';
 import 'patient_screen.dart';
+import 'family_home_screen.dart';
+import 'services/family_api.dart';
+
+@pragma('vm:entry-point')
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  print('BACKGROUND FCM MESSAGE: ${message.messageId}');
+  print('BACKGROUND FCM DATA: ${message.data}');
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+
   await NotificationService.init();
+  await AppointmentReminderService.init();
   await FirebaseNotificationService.init();
 
   final prefs = await SharedPreferences.getInstance();
@@ -29,14 +47,122 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Widget startScreen = const AuthScreen();
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: StartScreen(savedUserId: savedUserId, savedRole: savedRole),
+    );
+  }
+}
 
-    if (savedUserId != null && savedUserId!.isNotEmpty) {
-      if (savedRole == 'patient') {
-        startScreen = PatientHomeScreen(userId: savedUserId!);
-      }
+class StartScreen extends StatefulWidget {
+  final String? savedUserId;
+  final String? savedRole;
+
+  const StartScreen({
+    super.key,
+    required this.savedUserId,
+    required this.savedRole,
+  });
+
+  @override
+  State<StartScreen> createState() => _StartScreenState();
+}
+
+class _StartScreenState extends State<StartScreen> {
+  bool isLoading = true;
+  Widget startScreen = const AuthScreen();
+
+  @override
+  void initState() {
+    super.initState();
+    _decideStartScreen();
+  }
+
+  Future<void> _decideStartScreen() async {
+    final userId = widget.savedUserId;
+    final role = widget.savedRole;
+
+    if (userId == null || userId.isEmpty || role == null || role.isEmpty) {
+      setState(() {
+        startScreen = const AuthScreen();
+        isLoading = false;
+      });
+      return;
     }
 
-    return MaterialApp(debugShowCheckedModeBanner: false, home: startScreen);
+    if (role == 'patient') {
+      setState(() {
+        startScreen = PatientHomeScreen(userId: userId);
+        isLoading = false;
+      });
+      return;
+    }
+    if (role == 'doctor') {
+      setState(() {
+        startScreen = DoctorWebDashboard(doctorId: userId);
+        isLoading = false;
+      });
+      return;
+    }
+
+    if (role == 'nutritionist') {
+      setState(() {
+        startScreen = NutritionistWebDashboard(userId: userId);
+        isLoading = false;
+      });
+      return;
+    }
+    if (role == 'family') {
+      try {
+        final familyData = await FamilyApi.getFamilyProfile(userId);
+
+        final parentProfile = familyData['parentProfile'];
+        final linkedPatient = parentProfile['linkedPatientId'];
+
+        final linkedPatientId = linkedPatient is Map
+            ? linkedPatient['_id'].toString()
+            : linkedPatient.toString();
+
+        final linkedPatientName = linkedPatient is Map
+            ? '${linkedPatient['firstName'] ?? ''} ${linkedPatient['lastName'] ?? ''}'
+                  .trim()
+            : 'Patient';
+
+        setState(() {
+          startScreen = FamilyHomeScreen(
+            familyUserId: userId,
+            patientId: linkedPatientId,
+            initialPatientName: linkedPatientName,
+          );
+          isLoading = false;
+        });
+      } catch (e) {
+        print('FAILED TO AUTO LOGIN FAMILY: $e');
+
+        setState(() {
+          startScreen = const AuthScreen();
+          isLoading = false;
+        });
+      }
+
+      return;
+    }
+
+    setState(() {
+      startScreen = const AuthScreen();
+      isLoading = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (isLoading) {
+      return const Scaffold(
+        backgroundColor: Color(0xffEAF6FF),
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    return startScreen;
   }
 }

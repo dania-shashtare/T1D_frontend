@@ -12,6 +12,8 @@ import 'services/firebase_notification_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'doctor_web_dashboard.dart';
 import 'nutritionist_web_dashboard.dart';
+import 'family_home_screen.dart';
+import 'services/family_api.dart';
 import 'doctor_web_dashboard.dart';
 import 'nutritionist_web_dashboard.dart';
 import 'admin_dashboard_screen.dart';
@@ -321,6 +323,31 @@ class _AuthScreenState extends State<AuthScreen> {
             builder: (context) => NutritionistWebDashboard(userId: userId),
           ),
         );
+      } else if (role == 'family') {
+        final familyData = await FamilyApi.getFamilyProfile(userId);
+
+        final parentProfile = familyData['parentProfile'];
+        final linkedPatient = parentProfile['linkedPatientId'];
+
+        final linkedPatientId = linkedPatient is Map
+            ? linkedPatient['_id'].toString()
+            : linkedPatient.toString();
+
+        final linkedPatientName = linkedPatient is Map
+            ? '${linkedPatient['firstName'] ?? ''} ${linkedPatient['lastName'] ?? ''}'
+                  .trim()
+            : 'Patient';
+
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => FamilyHomeScreen(
+              familyUserId: userId,
+              patientId: linkedPatientId,
+              initialPatientName: linkedPatientName,
+            ),
+          ),
+        );
       } else {
         _snack("This role home page is not linked yet");
       }
@@ -396,6 +423,45 @@ class _AuthScreenState extends State<AuthScreen> {
             context,
             MaterialPageRoute(
               builder: (context) => PatientHomeScreen(userId: userId),
+            ),
+          );
+        } else if (role == 'family') {
+          final familyData = await FamilyApi.getFamilyProfile(userId);
+
+          final parentProfile = familyData['parentProfile'];
+          final linkedPatient = parentProfile['linkedPatientId'];
+
+          final linkedPatientId = linkedPatient is Map
+              ? linkedPatient['_id'].toString()
+              : linkedPatient.toString();
+
+          final linkedPatientName = linkedPatient is Map
+              ? '${linkedPatient['firstName'] ?? ''} ${linkedPatient['lastName'] ?? ''}'
+                    .trim()
+              : 'Patient';
+
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => FamilyHomeScreen(
+                familyUserId: userId,
+                patientId: linkedPatientId,
+                initialPatientName: linkedPatientName,
+              ),
+            ),
+          );
+        } else if (role == 'doctor') {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => DoctorWebDashboard(doctorId: userId),
+            ),
+          );
+        } else if (role == 'nutritionist') {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => NutritionistWebDashboard(userId: userId),
             ),
           );
         } else {

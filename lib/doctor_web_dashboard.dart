@@ -6,6 +6,8 @@ import 'package:url_launcher/url_launcher.dart';
 import 'services/doctor_appointment_api.dart';
 import 'reports_screen.dart';
 import 'chat_page.dart';
+import 'services/appointment_reminder_service.dart';
+import 'dart:async';
 
 class DoctorWebDashboard extends StatefulWidget {
   final String doctorId;
@@ -119,7 +121,10 @@ class _DoctorWebDashboardState extends State<DoctorWebDashboard> {
     Icons.chat_bubble_outline_rounded,
     Icons.person_outline_rounded,
   ];
+  Timer? _appointmentWatcherTimer;
 
+  final List<Map<String, dynamic>> _doctorNotifications = [];
+  final Set<String> _shownAppointmentAlerts = {};
   @override
   void initState() {
     super.initState();
@@ -127,6 +132,8 @@ class _DoctorWebDashboardState extends State<DoctorWebDashboard> {
     _loadDoctorAppointments();
     _loadPatientStatus();
     _loadDoctorAvailability();
+    _scheduleDoctorAppointmentReminders();
+    _startDoctorAppointmentWatcher();
   }
 
   Future<void> _loadDoctorProfile() async {
@@ -162,6 +169,35 @@ class _DoctorWebDashboardState extends State<DoctorWebDashboard> {
     }
   }
 
+  Future<void> _scheduleDoctorAppointmentReminders() async {
+    try {
+      final appointments = await DoctorDashboardApi.getDoctorAppointments(
+        widget.doctorId,
+      );
+
+      for (final appointment in appointments) {
+        final patient = appointment['patientId'];
+
+        final patientName = patient is Map
+            ? '${patient['firstName'] ?? ''} ${patient['lastName'] ?? ''}'
+                  .trim()
+            : 'a patient';
+
+        AppointmentReminderService.scheduleAppointment(
+          id: 'doctor-${appointment['_id']}',
+          userId: widget.doctorId,
+          day: appointment['day']?.toString() ?? '',
+          time: appointment['time']?.toString() ?? '',
+          title: 'Patient appointment now',
+          body: 'Your appointment with $patientName is starting now.',
+          type: 'doctor_appointment',
+        );
+      }
+    } catch (e) {
+      debugPrint('Failed to schedule doctor appointment reminders: $e');
+    }
+  }
+
   Future<void> _loadDoctorAppointments() async {
     try {
       final data = await DoctorDashboardApi.getDoctorAppointments(
@@ -179,6 +215,484 @@ class _DoctorWebDashboardState extends State<DoctorWebDashboard> {
         isLoadingAppointments = false;
       });
     }
+  }
+
+  int get _doctorUnreadNotificationsCount {
+    return _doctorNotifications
+        .where((notification) => notification['isRead'] != true)
+        .length;
+  }
+
+  void _startDoctorAppointmentWatcher() {
+    _appointmentWatcherTimer?.cancel();
+
+    _appointmentWatcherTimer = Timer.periodic(const Duration(seconds: 20), (
+      _,
+    ) async {
+      if (doctorAppointments.isEmpty) {
+        await _loadDoctorAppointments();
+      }
+
+      _checkDoctorAppointmentsNow();
+    });
+
+    Future.delayed(const Duration(seconds: 2), () {
+      _checkDoctorAppointmentsNow();
+    });
+  }
+
+  void _checkDoctorAppointmentsNow() {
+    final now = DateTime.now();
+
+    for (final appointment in doctorAppointments) {
+      final id = appointment['_id']?.toString() ?? '';
+      if (id.isEmpty) continue;
+
+      final day = appointment['day']?.toString() ?? '';
+      final time = appointment['time']?.toString() ?? '';
+      final status = appointment['status']?.toString() ?? 'booked';
+
+      if (status != 'booked') continue;
+
+      final appointmentDateTime = _appointmentDateTime(day, time);
+      if (appointmentDateTime == null) continue;
+
+      final patient = appointment['patientId'];
+      String patientName = 'patient';
+
+      if (patient is Map) {
+        patientName =
+            '${patient['firstName'] ?? ''} ${patient['lastName'] ?? ''}'.trim();
+
+        if (patientName.isEmpty) {
+          patientName = patient['email']?.toString() ?? 'patient';
+        }
+      }
+
+      final diff = appointmentDateTime.difference(now);
+
+      // Reminder before 5 minutes
+      final reminderKey = '$id-reminder-5';
+      if (!_shownAppointmentAlerts.contains(reminderKey) &&
+          diff.inSeconds <= 300 &&
+          diff.inSeconds >= 240) {
+        _shownAppointmentAlerts.add(reminderKey);
+
+        setState(() {
+          _doctorNotifications.insert(0, {
+            'id': reminderKey,
+            'title': 'Appointment reminder',
+            'body': 'Your appointment with $patientName starts in 5 minutes.',
+            'time': _formatNotificationTime(DateTime.now()),
+            'isRead': false,
+            'kind': 'reminder',
+          });
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Appointment with $patientName starts in 5 minutes.'),
+            action: SnackBarAction(
+              label: 'View',
+              onPressed: _showDoctorNotificationsPanel,
+            ),
+          ),
+        );
+      }
+
+      // Appointment now
+      final nowKey = '$id-now';
+      if (!_shownAppointmentAlerts.contains(nowKey) &&
+          diff.inSeconds <= 0 &&
+          diff.inSeconds >= -60) {
+        _shownAppointmentAlerts.add(nowKey);
+
+        setState(() {
+          _doctorNotifications.insert(0, {
+            'id': nowKey,
+            'title': 'Appointment now',
+            'body': 'You have an appointment with $patientName now.',
+            'time': _formatNotificationTime(DateTime.now()),
+            'isRead': false,
+            'kind': 'now',
+          });
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Appointment with $patientName is starting now.'),
+            action: SnackBarAction(
+              label: 'View',
+              onPressed: _showDoctorNotificationsPanel,
+            ),
+          ),
+        );
+      }
+    }
+  }
+
+  DateTime? _appointmentDateTime(String day, String time) {
+    final now = DateTime.now();
+
+    final weekday = _weekdayNumber(day);
+    if (weekday == null) return null;
+
+    final parsed = _parseTime(time);
+    if (parsed == null) return null;
+
+    int daysToAdd = weekday - now.weekday;
+
+    if (daysToAdd < 0) {
+      daysToAdd += 7;
+    }
+
+    return DateTime(
+      now.year,
+      now.month,
+      now.day,
+      parsed['hour']!,
+      parsed['minute']!,
+    ).add(Duration(days: daysToAdd));
+  }
+
+  int? _weekdayNumber(String day) {
+    switch (day.trim().toLowerCase()) {
+      case 'monday':
+        return DateTime.monday;
+      case 'tuesday':
+        return DateTime.tuesday;
+      case 'wednesday':
+        return DateTime.wednesday;
+      case 'thursday':
+        return DateTime.thursday;
+      case 'friday':
+        return DateTime.friday;
+      case 'saturday':
+        return DateTime.saturday;
+      case 'sunday':
+        return DateTime.sunday;
+      default:
+        return null;
+    }
+  }
+
+  Map<String, int>? _parseTime(String time) {
+    final cleaned = time.trim().toUpperCase();
+
+    final isPm = cleaned.contains('PM');
+    final isAm = cleaned.contains('AM');
+
+    final timeOnly = cleaned.replaceAll('AM', '').replaceAll('PM', '').trim();
+
+    final parts = timeOnly.split(':');
+    if (parts.length < 2) return null;
+
+    int hour = int.tryParse(parts[0]) ?? 0;
+    final minute = int.tryParse(parts[1]) ?? 0;
+
+    if (isPm && hour != 12) hour += 12;
+    if (isAm && hour == 12) hour = 0;
+
+    return {'hour': hour, 'minute': minute};
+  }
+
+  String _formatNotificationTime(DateTime dateTime) {
+    final hour = dateTime.hour % 12 == 0 ? 12 : dateTime.hour % 12;
+    final minute = dateTime.minute.toString().padLeft(2, '0');
+    final period = dateTime.hour >= 12 ? 'PM' : 'AM';
+
+    return '$hour:$minute $period';
+  }
+
+  void _showDoctorNotificationsPanel() {
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Notifications',
+      barrierColor: Colors.black.withOpacity(0.45),
+      transitionDuration: const Duration(milliseconds: 250),
+      pageBuilder: (context, animation, secondaryAnimation) {
+        return Align(
+          alignment: Alignment.centerRight,
+          child: Material(
+            color: Colors.transparent,
+            child: Container(
+              width: 430,
+              height: double.infinity,
+              decoration: const BoxDecoration(
+                color: Color(0xffF4FAFF),
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(30),
+                  bottomLeft: Radius.circular(30),
+                ),
+              ),
+              child: Column(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(22, 22, 18, 18),
+                    decoration: const BoxDecoration(
+                      color: mainBlue,
+                      borderRadius: BorderRadius.only(
+                        topLeft: Radius.circular(30),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 46,
+                          height: 46,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.18),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: const Icon(
+                            Icons.notifications_active_rounded,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Notifications',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 23,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              SizedBox(height: 3),
+                              Text(
+                                'Appointment reminders',
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () => Navigator.pop(context),
+                          icon: const Icon(
+                            Icons.close_rounded,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  Expanded(
+                    child: _doctorNotifications.isEmpty
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Container(
+                                  width: 76,
+                                  height: 76,
+                                  decoration: BoxDecoration(
+                                    color: softBlue,
+                                    borderRadius: BorderRadius.circular(24),
+                                  ),
+                                  child: const Icon(
+                                    Icons.notifications_none_rounded,
+                                    color: mainBlue,
+                                    size: 38,
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                const Text(
+                                  'No notifications yet',
+                                  style: TextStyle(
+                                    color: textBlue,
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 5),
+                                const Text(
+                                  'Appointment alerts will appear here.',
+                                  style: TextStyle(
+                                    color: Colors.black45,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        : StatefulBuilder(
+                            builder: (context, setModalState) {
+                              return ListView.separated(
+                                padding: const EdgeInsets.all(18),
+                                itemCount: _doctorNotifications.length,
+                                separatorBuilder: (_, __) =>
+                                    const SizedBox(height: 12),
+                                itemBuilder: (context, index) {
+                                  final notification =
+                                      _doctorNotifications[index];
+
+                                  final isRead = notification['isRead'] == true;
+                                  final kind =
+                                      notification['kind']?.toString() ?? 'now';
+                                  final isReminder = kind == 'reminder';
+
+                                  return AnimatedContainer(
+                                    duration: const Duration(milliseconds: 180),
+                                    padding: const EdgeInsets.all(16),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(22),
+                                      border: Border.all(
+                                        color: isRead
+                                            ? const Color(0xffDCEEFF)
+                                            : mainBlue.withOpacity(0.45),
+                                        width: isRead ? 1 : 1.4,
+                                      ),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.06),
+                                          blurRadius: 16,
+                                          offset: const Offset(0, 7),
+                                        ),
+                                      ],
+                                    ),
+                                    child: Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Container(
+                                          width: 54,
+                                          height: 54,
+                                          decoration: BoxDecoration(
+                                            color: isReminder
+                                                ? const Color(0xffFFF3D8)
+                                                : const Color(0xffDCEEFF),
+                                            borderRadius: BorderRadius.circular(
+                                              18,
+                                            ),
+                                          ),
+                                          child: Icon(
+                                            isReminder
+                                                ? Icons.schedule_rounded
+                                                : Icons.calendar_month_rounded,
+                                            color: isReminder
+                                                ? orange
+                                                : mainBlue,
+                                            size: 27,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 14),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Row(
+                                                children: [
+                                                  Expanded(
+                                                    child: Text(
+                                                      notification['title']
+                                                              ?.toString() ??
+                                                          '',
+                                                      style: TextStyle(
+                                                        color: textBlue,
+                                                        fontSize: 16,
+                                                        fontWeight: isRead
+                                                            ? FontWeight.w600
+                                                            : FontWeight.bold,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  if (!isRead)
+                                                    Container(
+                                                      width: 9,
+                                                      height: 9,
+                                                      decoration:
+                                                          const BoxDecoration(
+                                                            color: red,
+                                                            shape:
+                                                                BoxShape.circle,
+                                                          ),
+                                                    ),
+                                                ],
+                                              ),
+                                              const SizedBox(height: 6),
+                                              Text(
+                                                notification['body']
+                                                        ?.toString() ??
+                                                    '',
+                                                style: const TextStyle(
+                                                  color: Colors.black54,
+                                                  fontSize: 13.5,
+                                                  height: 1.35,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 12),
+                                              Row(
+                                                children: [
+                                                  const Icon(
+                                                    Icons.access_time_rounded,
+                                                    size: 16,
+                                                    color: Colors.black38,
+                                                  ),
+                                                  const SizedBox(width: 5),
+                                                  Text(
+                                                    notification['time']
+                                                            ?.toString() ??
+                                                        '',
+                                                    style: const TextStyle(
+                                                      color: Colors.black45,
+                                                      fontSize: 12,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                    ),
+                                                  ),
+                                                  const Spacer(),
+                                                  if (!isRead)
+                                                    TextButton(
+                                                      onPressed: () {
+                                                        setState(() {
+                                                          _doctorNotifications[index]['isRead'] =
+                                                              true;
+                                                        });
+                                                        setModalState(() {});
+                                                      },
+                                                      child: const Text(
+                                                        'Mark read',
+                                                      ),
+                                                    ),
+                                                ],
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        final offsetAnimation =
+            Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero).animate(
+              CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+            );
+
+        return SlideTransition(position: offsetAnimation, child: child);
+      },
+    );
   }
 
   Future<void> _loadDoctorAvailability() async {
@@ -1018,11 +1532,7 @@ class _DoctorWebDashboardState extends State<DoctorWebDashboard> {
           // Notifications only
           InkWell(
             borderRadius: BorderRadius.circular(16),
-            onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Notifications will appear here')),
-              );
-            },
+            onTap: _showDoctorNotificationsPanel,
             child: Stack(
               clipBehavior: Clip.none,
               children: [
@@ -1039,19 +1549,33 @@ class _DoctorWebDashboardState extends State<DoctorWebDashboard> {
                   ),
                 ),
 
-                // small badge
-                Positioned(
-                  right: 8,
-                  top: 8,
-                  child: Container(
-                    width: 9,
-                    height: 9,
-                    decoration: const BoxDecoration(
-                      color: red,
-                      shape: BoxShape.circle,
+                if (_doctorUnreadNotificationsCount > 0)
+                  Positioned(
+                    right: -4,
+                    top: -4,
+                    child: Container(
+                      padding: const EdgeInsets.all(5),
+                      constraints: const BoxConstraints(
+                        minWidth: 20,
+                        minHeight: 20,
+                      ),
+                      decoration: const BoxDecoration(
+                        color: red,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Text(
+                        _doctorUnreadNotificationsCount > 9
+                            ? '9+'
+                            : _doctorUnreadNotificationsCount.toString(),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
                   ),
-                ),
               ],
             ),
           ),
@@ -1120,6 +1644,7 @@ class _DoctorWebDashboardState extends State<DoctorWebDashboard> {
     editWeightController.dispose();
     editHeightController.dispose();
     editAllergyController.dispose();
+    _appointmentWatcherTimer?.cancel();
     super.dispose();
   }
 

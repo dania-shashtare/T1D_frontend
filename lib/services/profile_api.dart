@@ -1,11 +1,16 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/profile_model.dart';
+import 'package:flutter/foundation.dart';
 
 class ProfileApi {
-  //static const String baseUrl = 'http://localhost:5000/api/profile';
-  // إذا Android emulator:
-  static const String baseUrl = 'http://10.0.2.2:5000/api/profile';
+  static String get baseUrl {
+    if (kIsWeb) {
+      return 'http://localhost:5000/api/profile';
+    } else {
+      return 'http://10.0.2.2:5000/api/profile';
+    }
+  }
 
   static Future<ProfileModel> getProfile(String userId) async {
     final url = '$baseUrl/$userId';

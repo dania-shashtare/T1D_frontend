@@ -50,7 +50,7 @@ dependencies:
   intl: ^0.19.0
   url_launcher: ^6.3.2
   google_maps_flutter: ^2.10.0
-
+  audioplayers: ^6.1.0
  
   
 
@@ -104,7 +104,7 @@ flutter:
     - lib/assets/images/food2.png
     - lib/assets/images/food3.png
     - lib/assets/images/food4.png
-
+    - lib/assets/sounds/critical_alarm.mp3
     - lib/assets/icons/google_logo.png 
     - lib/assets/images/low_mascot.png
     - lib/assets/images/orange_juice.png

@@ -31,6 +31,10 @@ import 'contact_doctor_page.dart';
 import 'contact_specialists_page.dart';
 import 'patient_assigned_meal_plans_page.dart';
 
+import 'services/family_api.dart';
+import 'services/appointment_reminder_api.dart';
+import 'services/appointment_reminder_service.dart';
+
 class PatientHomeScreen extends StatefulWidget {
   final String userId;
 
@@ -109,6 +113,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
     _scheduleLantusFromProfile();
     _loadPatientProfile();
     _loadReadings();
+    _schedulePatientAppointmentReminders();
   }
 
   void _showContactOptions(BuildContext context) {
@@ -572,6 +577,25 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
           minute: minute,
         );
 
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(widget.userId)
+            .collection('daily_lantus')
+            .doc(_todayKey())
+            .set({
+              'scheduledTime': lantusTime,
+              'taken': false,
+              'familyAlertSent': false,
+              'date': _todayKey(),
+              'createdAt': FieldValue.serverTimestamp(),
+            }, SetOptions(merge: true));
+
+        _scheduleFamilyLantusMissedCheck(
+          hour: hour,
+          minute: minute,
+          scheduledTimeText: lantusTime,
+        );
+
         print('AFTER CALLING NOTIFICATION SERVICE');
       } catch (e) {
         print('NOTIFICATION SERVICE ERROR: $e');
@@ -581,6 +605,78 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
     } catch (e) {
       print('FAILED TO SCHEDULE LANTUS FROM HOME: $e');
     }
+  }
+
+  void _scheduleFamilyLantusMissedCheck({
+    required int hour,
+    required int minute,
+    required String scheduledTimeText,
+  }) {
+    final now = DateTime.now();
+
+    DateTime scheduled = DateTime(now.year, now.month, now.day, hour, minute);
+
+    if (scheduled.isBefore(now)) {
+      scheduled = scheduled.add(const Duration(days: 1));
+    }
+
+    final checkTime = scheduled.add(const Duration(minutes: 10));
+    final delay = checkTime.difference(now);
+
+    print(
+      'FAMILY LANTUS MISSED CHECK SCHEDULED AFTER: ${delay.inMinutes} minutes',
+    );
+
+    Future.delayed(delay, () async {
+      try {
+        final todayKey = _todayKey();
+
+        final lantusDocRef = FirebaseFirestore.instance
+            .collection('users')
+            .doc(widget.userId)
+            .collection('daily_lantus')
+            .doc(todayKey);
+
+        final lantusDoc = await lantusDocRef.get();
+
+        final data = lantusDoc.data();
+
+        final taken = data?['taken'] == true;
+        final familyAlertSent = data?['familyAlertSent'] == true;
+
+        if (taken || familyAlertSent) {
+          print(
+            'LANTUS FAMILY ALERT NOT SENT: taken=$taken, familyAlertSent=$familyAlertSent',
+          );
+          return;
+        }
+
+        await FamilyApi.notifyFamilyLantusMissed(
+          patientId: widget.userId,
+          scheduledTime: scheduledTimeText,
+        );
+
+        await lantusDocRef.set({
+          'scheduledTime': scheduledTimeText,
+          'taken': false,
+          'familyAlertSent': true,
+          'familyAlertSentAt': FieldValue.serverTimestamp(),
+          'date': todayKey,
+        }, SetOptions(merge: true));
+
+        print('CRITICAL LANTUS ALERT SENT TO FAMILY');
+      } catch (e) {
+        debugPrint('Failed to send Lantus missed alert to family: $e');
+      }
+    });
+  }
+
+  String _todayKey() {
+    final now = DateTime.now();
+    final month = now.month.toString().padLeft(2, '0');
+    final day = now.day.toString().padLeft(2, '0');
+
+    return '${now.year}-$month-$day';
   }
 
   Future<void> _loadPatientProfile() async {
@@ -598,6 +694,59 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
       });
     } catch (e) {
       debugPrint('Failed to load patient profile: $e');
+    }
+  }
+
+  Future<void> _schedulePatientAppointmentReminders() async {
+    try {
+      final doctorAppointments =
+          await AppointmentReminderApi.getPatientDoctorAppointments(
+            widget.userId,
+          );
+
+      for (final appointment in doctorAppointments) {
+        final doctor = appointment['doctorId'];
+
+        final doctorName = doctor is Map
+            ? '${doctor['firstName'] ?? ''} ${doctor['lastName'] ?? ''}'.trim()
+            : 'your doctor';
+
+        AppointmentReminderService.scheduleAppointment(
+          id: 'patient-doctor-${appointment['_id']}',
+          userId: widget.userId,
+          day: appointment['day']?.toString() ?? '',
+          time: appointment['time']?.toString() ?? '',
+          title: 'Doctor appointment now',
+          body: 'Your appointment with $doctorName is starting now.',
+          type: 'doctor_appointment',
+        );
+      }
+
+      final nutritionistAppointments =
+          await AppointmentReminderApi.getPatientNutritionistAppointments(
+            widget.userId,
+          );
+
+      for (final appointment in nutritionistAppointments) {
+        final nutritionist = appointment['nutritionistId'];
+
+        final nutritionistName = nutritionist is Map
+            ? '${nutritionist['firstName'] ?? ''} ${nutritionist['lastName'] ?? ''}'
+                  .trim()
+            : 'your nutritionist';
+
+        AppointmentReminderService.scheduleAppointment(
+          id: 'patient-nutritionist-${appointment['_id']}',
+          userId: widget.userId,
+          day: appointment['day']?.toString() ?? '',
+          time: appointment['time']?.toString() ?? '',
+          title: 'Nutritionist appointment now',
+          body: 'Your appointment with $nutritionistName is starting now.',
+          type: 'nutritionist_appointment',
+        );
+      }
+    } catch (e) {
+      debugPrint('Failed to schedule patient appointment reminders: $e');
     }
   }
 
@@ -685,6 +834,11 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
         readingTime: DateTime.now(),
       );
 
+      await _sendFamilyGlucoseAlertIfNeeded(
+        patientId: widget.userId,
+        glucoseValue: val,
+      );
+
       final newReading = GlucoseReading.fromApiJson(saved);
 
       setState(() {
@@ -741,9 +895,29 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
         _openHighGlucoseScreen(val);
       }
     } catch (e) {
+      if (!mounted) return;
+
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Failed to save reading: $e')));
+    }
+  }
+
+  Future<void> _sendFamilyGlucoseAlertIfNeeded({
+    required String patientId,
+    required double glucoseValue,
+  }) async {
+    if (glucoseValue >= 70 && glucoseValue <= 180) {
+      return;
+    }
+
+    try {
+      await FamilyApi.notifyFamilyGlucose(
+        patientId: patientId,
+        glucoseValue: glucoseValue,
+      );
+    } catch (e) {
+      debugPrint('Failed to notify family from backend: $e');
     }
   }
 
