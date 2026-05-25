@@ -53,7 +53,7 @@ class DoctorAppointmentApi {
     throw Exception('Failed to get doctor availability');
   }
 
-  static Future<void> bookAppointment({
+  static Future<Map<String, dynamic>> bookAppointment({
     required String patientId,
     required String doctorId,
     required String visitType,
@@ -74,9 +74,12 @@ class DoctorAppointmentApi {
       }),
     );
 
-    if (response.statusCode != 201) {
-      final data = jsonDecode(response.body);
-      throw Exception(data['message'] ?? 'Failed to book doctor appointment');
+    final data = jsonDecode(response.body);
+
+    if (response.statusCode == 201) {
+      return data;
+    } else {
+      throw Exception(data['message'] ?? 'Failed to book appointment');
     }
   }
 

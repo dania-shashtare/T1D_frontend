@@ -29,6 +29,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'contact_nutritionist_page.dart';
 import 'contact_doctor_page.dart';
 import 'contact_specialists_page.dart';
+import 'patient_assigned_meal_plans_page.dart';
 
 class PatientHomeScreen extends StatefulWidget {
   final String userId;
@@ -1990,6 +1991,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
         'icon': Icons.chat_bubble_outline_rounded,
         'label': 'Chat / Ask anything',
       },
+      {'icon': Icons.restaurant_menu_rounded, 'label': 'Meal Plans'},
       {'icon': Icons.restaurant_outlined, 'label': 'Nutritionist'},
       {'icon': Icons.water_drop_outlined, 'label': 'Water'},
       {'icon': Icons.bolt_rounded, 'label': 'Activity'},
@@ -2048,7 +2050,18 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
                           );
                           return;
                         }
-
+                        if (label == 'Meal Plans') {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) =>
+                                  PatientAssignedMealPlansPage(
+                                    patientId: widget.userId,
+                                  ),
+                            ),
+                          );
+                          return;
+                        }
                         if (label == 'Chat / Ask anything') {
                           Navigator.push(
                             context,
