@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/doctor_appointment_api.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'payment_screen.dart';
 
 class ContactDoctorPage extends StatefulWidget {
   final String patientId;
@@ -470,7 +471,9 @@ class _ContactDoctorPageState extends State<ContactDoctorPage> {
     final meetingLink = appointment?['meetingLink'] ?? '';
 
     final isOnline = visitType.toString().toLowerCase() == 'online';
-
+    final paymentStatus = appointment?['paymentStatus'] ?? 'not_required';
+    final isPaid = paymentStatus == 'paid';
+    final isPendingPayment = paymentStatus == 'pending';
     return ListView(
       padding: const EdgeInsets.all(18),
       children: [
@@ -592,6 +595,69 @@ class _ContactDoctorPageState extends State<ContactDoctorPage> {
                     const SizedBox(height: 26),
 
                     if (isOnline)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 14),
+                        child: Row(
+                          children: [
+                            Icon(
+                              isPaid
+                                  ? Icons.check_circle
+                                  : Icons.access_time_filled,
+                              color: isPaid ? Colors.green : Colors.orange,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              isPaid ? 'Payment Paid' : 'Payment Pending',
+                              style: TextStyle(
+                                color: isPaid ? Colors.green : Colors.orange,
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                    if (isOnline && isPendingPayment)
+                      SizedBox(
+                        width: double.infinity,
+                        height: 56,
+                        child: ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xff1769B5),
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                          ),
+                          onPressed: () async {
+                            final paid = await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => PaymentScreen(
+                                  appointmentId: appointment['_id'],
+                                  appointmentType: 'doctor',
+                                  amount: appointment['paymentAmount'] ?? 10,
+                                ),
+                              ),
+                            );
+
+                            if (paid == true) {
+                              loadPage();
+                            }
+                          },
+                          icon: const Icon(Icons.payment),
+                          label: const Text(
+                            'Pay Now',
+                            style: TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+
+                    if (isOnline && isPaid)
                       SizedBox(
                         width: double.infinity,
                         height: 56,
@@ -947,7 +1013,7 @@ class _BookDoctorPageState extends State<BookDoctorPage> {
     try {
       final data = await DoctorAppointmentApi.getAvailability(
         doctorId: doctorUserId,
-        visitType: 'online',
+        visitType: selectedVisitType,
       );
 
       setState(() {
@@ -987,7 +1053,7 @@ class _BookDoctorPageState extends State<BookDoctorPage> {
     setState(() => isBooking = true);
 
     try {
-      await DoctorAppointmentApi.bookAppointment(
+      final result = await DoctorAppointmentApi.bookAppointment(
         patientId: widget.patientId,
         doctorId: doctorUserId,
         visitType: selectedVisitType,
@@ -997,11 +1063,45 @@ class _BookDoctorPageState extends State<BookDoctorPage> {
 
       setState(() => isBooking = false);
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Appointment booked successfully')),
-      );
+      final appointment = result['appointment'];
 
-      Navigator.pop(context, true);
+      if (appointment['visitType'] == 'online' &&
+          appointment['paymentStatus'] == 'pending') {
+        final paid = await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => PaymentScreen(
+              appointmentId: appointment['_id'],
+              appointmentType: 'doctor',
+              amount: appointment['paymentAmount'] ?? 10,
+            ),
+          ),
+        );
+
+        if (paid == true) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Payment completed and appointment booked'),
+            ),
+          );
+
+          Navigator.pop(context, true);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Appointment created, payment is still pending'),
+            ),
+          );
+
+          Navigator.pop(context, true);
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Appointment booked successfully')),
+        );
+
+        Navigator.pop(context, true);
+      }
     } catch (e) {
       setState(() => isBooking = false);
 
@@ -1299,6 +1399,8 @@ class _BookDoctorPageState extends State<BookDoctorPage> {
           setState(() {
             selectedVisitType = value;
           });
+
+          loadAvailability();
         },
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
