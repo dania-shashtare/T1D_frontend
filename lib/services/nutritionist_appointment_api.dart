@@ -1,9 +1,15 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:flutter/foundation.dart';
 
 class NutritionistAppointmentApi {
-  static const String baseUrl =
-      'http://10.0.2.2:5000/api/nutritionist-appointments';
+  static String get baseUrl {
+    if (kIsWeb) {
+      return 'http://localhost:5000/api/nutritionist-appointments';
+    } else {
+      return 'http://10.0.2.2:5000/api/nutritionist-appointments';
+    }
+  }
 
   static Future<Map<String, dynamic>> getActiveAppointment(
     String patientId,

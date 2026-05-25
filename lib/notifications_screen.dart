@@ -6,6 +6,75 @@ class NotificationsScreen extends StatelessWidget {
 
   const NotificationsScreen({super.key, required this.userId});
 
+  String _todayKey() {
+    final now = DateTime.now();
+    final month = now.month.toString().padLeft(2, '0');
+    final day = now.day.toString().padLeft(2, '0');
+    return '${now.year}-$month-$day';
+  }
+
+  bool _isLantusNotification(Map<String, dynamic> data) {
+    final type = data['type']?.toString() ?? '';
+    final title = data['title']?.toString().toLowerCase() ?? '';
+
+    return type == 'lantus' ||
+        type == 'lantus_reminder_again' ||
+        title.contains('lantus');
+  }
+
+  Future<void> _markAsRead(DocumentReference ref) async {
+    await ref.update({'isRead': true});
+  }
+
+  Future<void> _confirmLantusTaken({
+    required BuildContext context,
+    required DocumentReference notificationRef,
+  }) async {
+    final todayKey = _todayKey();
+
+    // 1) سجل إن المريض أخذ اللانتوس اليوم
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(userId)
+        .collection('daily_lantus')
+        .doc(todayKey)
+        .set({
+          'taken': true,
+          'takenAt': FieldValue.serverTimestamp(),
+          'date': todayKey,
+        }, SetOptions(merge: true));
+
+    // 2) خلي كل إشعارات اللانتوس القديمة مقروءة
+    final lantusNotifications = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(userId)
+        .collection('notifications')
+        .where('isRead', isEqualTo: false)
+        .get();
+
+    final batch = FirebaseFirestore.instance.batch();
+
+    for (final doc in lantusNotifications.docs) {
+      final data = doc.data();
+
+      if (_isLantusNotification(data)) {
+        batch.update(doc.reference, {
+          'isRead': true,
+          'takenConfirmed': true,
+          'takenConfirmedAt': FieldValue.serverTimestamp(),
+        });
+      }
+    }
+
+    await batch.commit();
+
+    if (!context.mounted) return;
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Lantus marked as taken.')));
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -38,24 +107,19 @@ class NotificationsScreen extends StatelessWidget {
           }
 
           final docs = snapshot.data!.docs;
-          for (final doc in docs) {
-            final data = doc.data() as Map<String, dynamic>;
-
-            if (data['isRead'] == false) {
-              doc.reference.update({'isRead': true});
-            }
-          }
 
           return ListView.separated(
             padding: const EdgeInsets.all(16),
             itemCount: docs.length,
             separatorBuilder: (_, __) => const SizedBox(height: 10),
             itemBuilder: (context, index) {
-              final data = docs[index].data() as Map<String, dynamic>;
+              final doc = docs[index];
+              final data = doc.data() as Map<String, dynamic>;
 
-              final title = data['title'] ?? '';
-              final body = data['body'] ?? '';
-              final isRead = data['isRead'] ?? false;
+              final title = data['title']?.toString() ?? '';
+              final body = data['body']?.toString() ?? '';
+              final isRead = data['isRead'] == true;
+              final isLantus = _isLantusNotification(data);
 
               return Container(
                 padding: const EdgeInsets.all(14),
@@ -97,6 +161,37 @@ class NotificationsScreen extends StatelessWidget {
                               color: Color(0xff587A9F),
                             ),
                           ),
+                          const SizedBox(height: 10),
+
+                          if (isLantus && !isRead)
+                            ElevatedButton.icon(
+                              onPressed: () async {
+                                await _confirmLantusTaken(
+                                  context: context,
+                                  notificationRef: doc.reference,
+                                );
+                              },
+                              icon: const Icon(
+                                Icons.check_circle_outline,
+                                size: 18,
+                              ),
+                              label: const Text('I took Lantus'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xff185FA5),
+                                foregroundColor: Colors.white,
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                            )
+                          else if (!isRead)
+                            TextButton(
+                              onPressed: () async {
+                                await _markAsRead(doc.reference);
+                              },
+                              child: const Text('Mark as read'),
+                            ),
                         ],
                       ),
                     ),

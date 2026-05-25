@@ -4,8 +4,13 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 class OnboardingApi {
-  static const String baseUrl = "http://localhost:5000";
-  //static const String baseUrl = "http://10.0.2.2:5000";
+  static String get baseUrl {
+    if (kIsWeb) {
+      return "http://localhost:5000";
+    } else {
+      return "http://10.0.2.2:5000";
+    }
+  }
 
   static Future<Map<String, dynamic>> savePatientProfile({
     required String userId,

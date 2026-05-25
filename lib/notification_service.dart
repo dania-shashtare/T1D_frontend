@@ -23,7 +23,6 @@ class NotificationService {
       settings,
       onDidReceiveNotificationResponse: (NotificationResponse response) async {
         if (response.actionId == 'lantus_taken') {
-          await confirmLantusTakenToday();
           await _notificationsPlugin.cancel(lantusNotificationId);
         }
       },
@@ -40,14 +39,25 @@ class NotificationService {
     tz.setLocalLocation(tz.getLocation('Asia/Gaza'));
   }
 
-  static Future<void> confirmLantusTakenToday() async {
-    final prefs = await SharedPreferences.getInstance();
+  static Future<void> confirmLantusTakenToday(String userId) async {
     final now = DateTime.now();
 
     final today =
         '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
 
+    final prefs = await SharedPreferences.getInstance();
     await prefs.setString('lantusTakenDate', today);
+
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(userId)
+        .collection('daily_lantus')
+        .doc(today)
+        .set({
+          'taken': true,
+          'takenAt': FieldValue.serverTimestamp(),
+          'date': today,
+        }, SetOptions(merge: true));
   }
 
   static Future<void> scheduleLantusNotification({
