@@ -2,6 +2,8 @@ import 'dart:math' as math;
 
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'providers/app_settings_provider.dart';
 import 'services/glucose_api.dart';
 
 import 'barcode_product_result_screen.dart';
@@ -35,6 +37,8 @@ import 'services/family_api.dart';
 import 'services/appointment_reminder_api.dart';
 import 'services/appointment_reminder_service.dart';
 
+import 'patient_settings_screen.dart';
+
 class PatientHomeScreen extends StatefulWidget {
   final String userId;
 
@@ -47,7 +51,7 @@ class PatientHomeScreen extends StatefulWidget {
 class _PatientHomeScreenState extends State<PatientHomeScreen>
     with SingleTickerProviderStateMixin {
   double? currentGlucose;
-  String glucoseStatus = 'No readings yet';
+  String glucoseStatus = '';
   String lastReading = '';
   Color statusColor = const Color(0xff1D9E75);
 
@@ -100,6 +104,193 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
   static const Color _mainBlue = Color(0xff185FA5);
   static const Color _textBlue = Color(0xff0C447C);
 
+  static const Color _darkBg = Color(0xff071A2F);
+  static const Color _darkCard = Color(0xff102A46);
+  static const Color _darkSoft = Color(0xff183A5C);
+  static const Color _darkIconBg = Color(0xff173A5E);
+  static const Color _darkText = Colors.white;
+  static const Color _darkSubText = Color(0xffAFC7DD);
+
+  bool get _isDark => Theme.of(context).brightness == Brightness.dark;
+
+  Color get _pageBg => _isDark ? _darkBg : const Color(0xffEAF6FF);
+  Color get _cardColor => _isDark ? _darkCard : Colors.white;
+  Color get _softCardColor => _isDark ? _darkSoft : _softBlue;
+  Color get _iconBgColor => _isDark ? _darkIconBg : _softBlue2;
+  Color get _titleColor => _isDark ? _darkText : _textBlue;
+  Color get _subtitleColor => _isDark ? _darkSubText : const Color(0xff7A9AB5);
+  Color get _sheetBgColor =>
+      _isDark ? const Color(0xff0D223A) : const Color(0xffF9FCFF);
+  Color get _borderColor =>
+      _isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.05);
+  Color get _tileBorderColor =>
+      _isDark ? Colors.white.withOpacity(0.08) : const Color(0xffD8EBFF);
+
+  static const Map<String, Map<String, String>> _strings = {
+    'en': {
+      'welcomeBack': 'Welcome back',
+      'todayOverview': "Today's overview",
+      'currentGlucose': 'CURRENT GLUCOSE',
+      'mgdl': 'mg/dL',
+      'noReadingsYet':
+          'No readings yet.\nAdd your first glucose reading below.',
+      'noReadingsDay': 'No valid readings for this day.',
+      'noReadingsYetStatus': 'No readings yet',
+      'noValidReadings': 'No valid readings',
+      'lowCheckNow': 'Low · check now',
+      'highTakeAction': 'High · take action',
+      'slightlyHigh': 'Slightly high',
+      'inRange': 'In Range',
+      'justNow': 'just now',
+      'minAgo': 'min ago',
+      'hAgo': 'h ago',
+      'today': 'Today',
+      'yesterday': 'Yesterday',
+      'tomorrow': 'Tomorrow',
+      'readings': 'readings',
+      'hourChart': '24-hour chart',
+      'enterMgdl': 'Enter mg/dL...',
+      'add': 'Add',
+      'meals': 'Meals',
+      'tapToAdd': 'Tap to add',
+      'notAddedYet': 'Not added yet',
+      'breakfast': 'Breakfast',
+      'morningSnack': 'Morning Snack',
+      'lunch': 'Lunch',
+      'afternoonSnack': 'Afternoon Snack',
+      'dinner': 'Dinner',
+      'home': 'Home',
+      'reports': 'Reports',
+      'menu': 'Menu',
+      'doctor': 'Doctor',
+      'contact': 'Contact',
+      'chatAsk': 'Chat / Ask anything',
+      'mealPlans': 'Meal Plans',
+      'nutritionist': 'Nutritionist',
+      'water': 'Water',
+      'activity': 'Activity',
+      'settings': 'Settings',
+      'whoContact': 'Who do you want to contact?',
+      'doctorContactSub': 'Choose a doctor and start chatting',
+      'nutritionistContactSub': 'Choose a nutritionist and start chatting',
+      'chooseContinue': 'Choose how you want to continue',
+      'addMyMeal': 'Add my meal',
+      'addMyMealSub': 'Enter your meal and calculate carbs',
+      'scanBarcode': 'Scan barcode',
+      'scanBarcodeSub': 'Scan packaged food',
+      'suggestMeal': 'Suggest a meal',
+      'suggestMealSub': "Get meal ideas if you're not sure",
+      'productNotFound': 'Product not found',
+      'validGlucose': 'Please enter a valid glucose reading.',
+      'unusualReading':
+          'This reading looks unusual and was ignored on the chart.',
+      'failedSave': 'Failed to save reading',
+      'readingInRange': 'This reading is in range',
+      'doctorAppointmentNow': 'Doctor appointment now',
+      'doctorAppointmentBody': 'Your appointment with {name} is starting now.',
+      'nutritionistAppointmentNow': 'Nutritionist appointment now',
+      'nutritionistAppointmentBody':
+          'Your appointment with {name} is starting now.',
+      'yourDoctor': 'your doctor',
+      'yourNutritionist': 'your nutritionist',
+    },
+    'ar': {
+      'welcomeBack': 'أهلًا بعودتك',
+      'todayOverview': 'ملخص اليوم',
+      'currentGlucose': 'السكر الحالي',
+      'mgdl': 'ملغم/دل',
+      'noReadingsYet': 'لا توجد قراءات بعد.\nأضيفي أول قراءة سكر بالأسفل.',
+      'noReadingsDay': 'لا توجد قراءات صالحة لهذا اليوم.',
+      'noReadingsYetStatus': 'لا توجد قراءات بعد',
+      'noValidReadings': 'لا توجد قراءات صالحة',
+      'lowCheckNow': 'منخفض · افحصي الآن',
+      'highTakeAction': 'مرتفع · اتخذي إجراء',
+      'slightlyHigh': 'مرتفع قليلًا',
+      'inRange': 'ضمن المعدل',
+      'justNow': 'الآن',
+      'minAgo': 'دقيقة مضت',
+      'hAgo': 'ساعة مضت',
+      'today': 'اليوم',
+      'yesterday': 'أمس',
+      'tomorrow': 'غدًا',
+      'readings': 'قراءات',
+      'hourChart': 'مخطط 24 ساعة',
+      'enterMgdl': 'أدخلي ملغم/دل...',
+      'add': 'إضافة',
+      'meals': 'الوجبات',
+      'tapToAdd': 'اضغطي للإضافة',
+      'notAddedYet': 'لم تتم الإضافة بعد',
+      'breakfast': 'الفطور',
+      'morningSnack': 'سناك صباحي',
+      'lunch': 'الغداء',
+      'afternoonSnack': 'سناك مسائي',
+      'dinner': 'العشاء',
+      'home': 'الرئيسية',
+      'reports': 'التقارير',
+      'menu': 'القائمة',
+      'doctor': 'الطبيب',
+      'contact': 'التواصل',
+      'chatAsk': 'الدردشة / اسألي أي شيء',
+      'mealPlans': 'خطط الوجبات',
+      'nutritionist': 'أخصائي التغذية',
+      'water': 'الماء',
+      'activity': 'النشاط',
+      'settings': 'الإعدادات',
+      'whoContact': 'مع من تريدين التواصل؟',
+      'doctorContactSub': 'اختاري طبيبًا وابدئي المحادثة',
+      'nutritionistContactSub': 'اختاري أخصائي تغذية وابدئي المحادثة',
+      'chooseContinue': 'اختاري طريقة المتابعة',
+      'addMyMeal': 'إضافة وجبتي',
+      'addMyMealSub': 'أدخلي وجبتك واحسبي الكربوهيدرات',
+      'scanBarcode': 'مسح الباركود',
+      'scanBarcodeSub': 'مسح طعام مغلف',
+      'suggestMeal': 'اقتراح وجبة',
+      'suggestMealSub': 'احصلي على أفكار وجبات عند الحيرة',
+      'productNotFound': 'لم يتم العثور على المنتج',
+      'validGlucose': 'يرجى إدخال قراءة سكر صحيحة.',
+      'unusualReading': 'هذه القراءة تبدو غير طبيعية وتم تجاهلها في المخطط.',
+      'failedSave': 'فشل حفظ القراءة',
+      'readingInRange': 'هذه القراءة ضمن المعدل',
+      'doctorAppointmentNow': 'موعد الطبيب الآن',
+      'doctorAppointmentBody': 'موعدك مع {name} يبدأ الآن.',
+      'nutritionistAppointmentNow': 'موعد أخصائي التغذية الآن',
+      'nutritionistAppointmentBody': 'موعدك مع {name} يبدأ الآن.',
+      'yourDoctor': 'طبيبك',
+      'yourNutritionist': 'أخصائي التغذية',
+    },
+  };
+
+  String get _lang => context.read<AppSettingsProvider>().language;
+  bool get _isArabic => _lang == 'ar';
+  TextDirection get _pageDirection =>
+      _isArabic ? TextDirection.rtl : TextDirection.ltr;
+
+  String t(String key) {
+    return _strings[_lang]?[key] ?? _strings['en']?[key] ?? key;
+  }
+
+  String _trMealTitle(String title) {
+    switch (title) {
+      case 'Breakfast':
+        return t('breakfast');
+      case 'Morning Snack':
+        return t('morningSnack');
+      case 'Lunch':
+        return t('lunch');
+      case 'Afternoon Snack':
+        return t('afternoonSnack');
+      case 'Dinner':
+        return t('dinner');
+      default:
+        return title;
+    }
+  }
+
+  String _trStatus(String status) {
+    if (status == 'Not added yet') return t('notAddedYet');
+    return status;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -119,7 +310,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
   void _showContactOptions(BuildContext context) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.white,
+      backgroundColor: _sheetBgColor,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
@@ -138,12 +329,12 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
                 ),
               ),
               const SizedBox(height: 20),
-              const Text(
-                'Who do you want to contact?',
+              Text(
+                t('whoContact'),
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
-                  color: Color(0xFF0B4F8A),
+                  color: _titleColor,
                 ),
               ),
               const SizedBox(height: 20),
@@ -151,8 +342,8 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
               _contactOptionTile(
                 context: context,
                 icon: Icons.medical_services_outlined,
-                title: 'Doctor',
-                subtitle: 'Choose a doctor and start chatting',
+                title: t('doctor'),
+                subtitle: t('doctorContactSub'),
                 onTap: () {
                   Navigator.pop(context);
 
@@ -173,8 +364,8 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
               _contactOptionTile(
                 context: context,
                 icon: Icons.restaurant_menu_outlined,
-                title: 'Nutritionist',
-                subtitle: 'Choose a nutritionist and start chatting',
+                title: t('nutritionist'),
+                subtitle: t('nutritionistContactSub'),
                 onTap: () {
                   Navigator.pop(context);
 
@@ -209,9 +400,9 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: const Color(0xFFEAF6FF),
+          color: _softCardColor,
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: const Color(0xFFD3ECFF)),
+          border: Border.all(color: _tileBorderColor),
         ),
         child: Row(
           children: [
@@ -219,10 +410,10 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
               width: 52,
               height: 52,
               decoration: BoxDecoration(
-                color: const Color(0xFFD8ECFF),
+                color: _iconBgColor,
                 borderRadius: BorderRadius.circular(16),
               ),
-              child: Icon(icon, color: const Color(0xFF1976C9), size: 28),
+              child: Icon(icon, color: _mainBlue, size: 28),
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -231,8 +422,8 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(
-                      color: Color(0xFF0B4F8A),
+                    style: TextStyle(
+                      color: _titleColor,
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
                     ),
@@ -240,17 +431,16 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
                   const SizedBox(height: 4),
                   Text(
                     subtitle,
-                    style: TextStyle(
-                      color: Colors.blueGrey.shade600,
-                      fontSize: 13,
-                    ),
+                    style: TextStyle(color: _subtitleColor, fontSize: 13),
                   ),
                 ],
               ),
             ),
-            const Icon(
+            Icon(
               Icons.arrow_forward_ios_rounded,
-              color: Color(0xFF8CC7F5),
+              color: _isDark
+                  ? const Color(0xff8CC7F5)
+                  : const Color(0xFF8CC7F5),
               size: 18,
             ),
           ],
@@ -274,10 +464,10 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
   }
 
   String _getGlucoseStatus(double v) {
-    if (v < 70) return 'Low · check now';
-    if (v > 180) return 'High · take action';
-    if (v > 140) return 'Slightly high';
-    return 'In Range';
+    if (v < 70) return t('lowCheckNow');
+    if (v > 180) return t('highTakeAction');
+    if (v > 140) return t('slightlyHigh');
+    return t('inRange');
   }
 
   String _displayGlucoseValue(double? value) {
@@ -304,9 +494,9 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
     final now = DateTime.now();
     final diff = now.difference(dateTime);
 
-    if (diff.inMinutes < 1) return 'just now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes} min ago';
-    if (diff.inHours < 24) return '${diff.inHours} h ago';
+    if (diff.inMinutes < 1) return t('justNow');
+    if (diff.inMinutes < 60) return '${diff.inMinutes} ${t('minAgo')}';
+    if (diff.inHours < 24) return '${diff.inHours} ${t('hAgo')}';
     return _formatTime(dateTime);
   }
 
@@ -498,9 +688,9 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
     final yesterday = today.subtract(const Duration(days: 1));
     final tomorrow = today.add(const Duration(days: 1));
 
-    if (_isSameDay(day, today)) return 'Today';
-    if (_isSameDay(day, yesterday)) return 'Yesterday';
-    if (_isSameDay(day, tomorrow)) return 'Tomorrow';
+    if (_isSameDay(day, today)) return t('today');
+    if (_isSameDay(day, yesterday)) return t('yesterday');
+    if (_isSameDay(day, tomorrow)) return t('tomorrow');
 
     const months = [
       'Jan',
@@ -709,15 +899,15 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
 
         final doctorName = doctor is Map
             ? '${doctor['firstName'] ?? ''} ${doctor['lastName'] ?? ''}'.trim()
-            : 'your doctor';
+            : t('yourDoctor');
 
         AppointmentReminderService.scheduleAppointment(
           id: 'patient-doctor-${appointment['_id']}',
           userId: widget.userId,
           day: appointment['day']?.toString() ?? '',
           time: appointment['time']?.toString() ?? '',
-          title: 'Doctor appointment now',
-          body: 'Your appointment with $doctorName is starting now.',
+          title: t('doctorAppointmentNow'),
+          body: t('doctorAppointmentBody').replaceAll('{name}', doctorName),
           type: 'doctor_appointment',
         );
       }
@@ -733,15 +923,17 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
         final nutritionistName = nutritionist is Map
             ? '${nutritionist['firstName'] ?? ''} ${nutritionist['lastName'] ?? ''}'
                   .trim()
-            : 'your nutritionist';
+            : t('yourNutritionist');
 
         AppointmentReminderService.scheduleAppointment(
           id: 'patient-nutritionist-${appointment['_id']}',
           userId: widget.userId,
           day: appointment['day']?.toString() ?? '',
           time: appointment['time']?.toString() ?? '',
-          title: 'Nutritionist appointment now',
-          body: 'Your appointment with $nutritionistName is starting now.',
+          title: t('nutritionistAppointmentNow'),
+          body: t(
+            'nutritionistAppointmentBody',
+          ).replaceAll('{name}', nutritionistName),
           type: 'nutritionist_appointment',
         );
       }
@@ -792,7 +984,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
   void _refreshCurrentReading() {
     if (readings.isEmpty) {
       currentGlucose = null;
-      glucoseStatus = 'No readings yet';
+      glucoseStatus = t('noReadingsYetStatus');
       lastReading = '';
       statusColor = const Color(0xff1D9E75);
       return;
@@ -803,7 +995,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
 
     if (visibleAll.isEmpty) {
       currentGlucose = null;
-      glucoseStatus = 'No valid readings';
+      glucoseStatus = t('noValidReadings');
       lastReading = '';
       statusColor = const Color(0xff1D9E75);
       return;
@@ -821,9 +1013,9 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
     final val = double.tryParse(_glucoseController.text.trim());
 
     if (val == null || val < 1 || val > 600) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a valid glucose reading.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(t('validGlucose'))));
       return;
     }
 
@@ -874,13 +1066,9 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
       if (!mounted) return;
 
       if (!isNewReadingVisible) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'This reading looks unusual and was ignored on the chart.',
-            ),
-          ),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(t('unusualReading'))));
         return;
       }
 
@@ -899,7 +1087,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
 
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Failed to save reading: $e')));
+      ).showSnackBar(SnackBar(content: Text('${t('failedSave')}: $e')));
     }
   }
 
@@ -988,7 +1176,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          'This reading is in range: ${_displayReadingValue(reading.value)} mg/dL',
+          '${t('readingInRange')}: ${_displayReadingValue(reading.value)} ${t('mgdl')}',
         ),
       ),
     );
@@ -1128,26 +1316,31 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xffEAF6FF),
-      bottomNavigationBar: SafeArea(
-        minimum: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-        child: _buildBottomNav(),
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-          child: Column(
-            children: [
-              _buildHeader(),
-              const SizedBox(height: 14),
-              _buildGlucoseCard(),
-              const SizedBox(height: 10),
-              _buildInputRow(),
-              const SizedBox(height: 14),
-              _buildMealsCard(),
-              const SizedBox(height: 14),
-            ],
+    context.watch<AppSettingsProvider>().language;
+
+    return Directionality(
+      textDirection: _pageDirection,
+      child: Scaffold(
+        backgroundColor: _pageBg,
+        bottomNavigationBar: SafeArea(
+          minimum: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          child: _buildBottomNav(),
+        ),
+        body: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+            child: Column(
+              children: [
+                _buildHeader(),
+                const SizedBox(height: 14),
+                _buildGlucoseCard(),
+                const SizedBox(height: 10),
+                _buildInputRow(),
+                const SizedBox(height: 14),
+                _buildMealsCard(),
+                const SizedBox(height: 14),
+              ],
+            ),
           ),
         ),
       ),
@@ -1157,22 +1350,25 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
   Widget _buildHeader() {
     return Row(
       children: [
-        const Expanded(
+        Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Welcome back',
+                t('welcomeBack'),
                 style: TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.w500,
-                  color: Color(0xff0C447C),
+                  color: _titleColor,
                 ),
               ),
-              SizedBox(height: 2),
+              const SizedBox(height: 2),
               Text(
-                "Today's overview",
-                style: TextStyle(fontSize: 13, color: Color(0xff378ADD)),
+                t('todayOverview'),
+                style: TextStyle(
+                  fontSize: 13,
+                  color: _isDark ? _darkSubText : const Color(0xff378ADD),
+                ),
               ),
             ],
           ),
@@ -1293,9 +1489,9 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
               SizedBox(
                 height: isMobile ? 260 : 245,
                 child: readings.isEmpty
-                    ? const Center(
+                    ? Center(
                         child: Text(
-                          'No readings yet.\nAdd your first glucose reading below.',
+                          t('noReadingsYet'),
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             color: Colors.white70,
@@ -1337,9 +1533,9 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
                                 final normalSpots = _normalSpots(prepared);
 
                                 if (visiblePrepared.isEmpty) {
-                                  return const Center(
+                                  return Center(
                                     child: Text(
-                                      'No valid readings for this day.',
+                                      t('noReadingsDay'),
                                       textAlign: TextAlign.center,
                                       style: TextStyle(
                                         color: Colors.white70,
@@ -1532,8 +1728,8 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'CURRENT GLUCOSE',
+          Text(
+            t('currentGlucose'),
             style: TextStyle(
               fontSize: 11,
               color: Colors.white70,
@@ -1554,10 +1750,10 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
                 ),
               ),
               const SizedBox(width: 5),
-              const Padding(
-                padding: EdgeInsets.only(bottom: 6),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
                 child: Text(
-                  'mg/dL',
+                  t('mgdl'),
                   style: TextStyle(fontSize: 13, color: Colors.white70),
                 ),
               ),
@@ -1634,7 +1830,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '$validCount readings · 24-hour chart',
+                      '$validCount ${t('readings')} · ${t('hourChart')}',
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                         color: Colors.white70,
@@ -1667,7 +1863,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
                       ),
                     ),
                     Text(
-                      '$validCount readings',
+                      '$validCount ${t('readings')}',
                       style: const TextStyle(
                         color: Colors.white70,
                         fontSize: 12,
@@ -1682,8 +1878,8 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
                         shape: BoxShape.circle,
                       ),
                     ),
-                    const Text(
-                      '24-hour chart',
+                    Text(
+                      t('hourChart'),
                       style: TextStyle(
                         color: Colors.white54,
                         fontSize: 12,
@@ -1726,27 +1922,28 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
         Expanded(
           child: TextField(
             controller: _glucoseController,
+            style: TextStyle(color: _titleColor),
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: InputDecoration(
-              hintText: 'Enter mg/dL...',
-              hintStyle: const TextStyle(color: Color(0xff9AB8D0)),
+              hintText: t('enterMgdl'),
+              hintStyle: TextStyle(color: _subtitleColor),
               filled: true,
-              fillColor: Colors.white,
+              fillColor: _cardColor,
               contentPadding: const EdgeInsets.symmetric(
                 horizontal: 14,
                 vertical: 12,
               ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(16),
-                borderSide: const BorderSide(
-                  color: Color(0xffB5D4F4),
+                borderSide: BorderSide(
+                  color: _isDark ? Colors.white24 : const Color(0xffB5D4F4),
                   width: 0.7,
                 ),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(16),
-                borderSide: const BorderSide(
-                  color: Color(0xffB5D4F4),
+                borderSide: BorderSide(
+                  color: _isDark ? Colors.white24 : const Color(0xffB5D4F4),
                   width: 0.7,
                 ),
               ),
@@ -1773,8 +1970,8 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
             ),
             padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 15),
           ),
-          child: const Text(
-            'Add',
+          child: Text(
+            t('add'),
             style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
           ),
         ),
@@ -1787,9 +1984,9 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: _cardColor,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: Colors.black.withOpacity(0.05), width: 0.5),
+        border: Border.all(color: _borderColor, width: 0.5),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1797,17 +1994,17 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'Meals',
+              Text(
+                t('meals'),
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w600,
-                  color: Color(0xff17466E),
+                  color: _titleColor,
                 ),
               ),
               Text(
-                'Tap to add',
-                style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                t('tapToAdd'),
+                style: TextStyle(fontSize: 11, color: _subtitleColor),
               ),
             ],
           ),
@@ -1816,8 +2013,8 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
             (e) => Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: _mealTile(
-                title: e.value['title'] as String,
-                status: e.value['status'] as String,
+                title: _trMealTitle(e.value['title'] as String),
+                status: _trStatus(e.value['status'] as String),
                 icon: e.value['icon'] as IconData,
                 onTap: () => _showMealOptions(e.value['title'] as String),
               ),
@@ -1830,24 +2027,25 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
 
   Widget _buildBottomNav() {
     final items = [
-      {'icon': Icons.home_rounded, 'label': 'Home'},
-      {'icon': Icons.restaurant_menu_rounded, 'label': 'Meals'},
-      {'icon': Icons.insert_chart_outlined_rounded, 'label': 'Reports'},
-      {'icon': Icons.grid_view_rounded, 'label': 'Menu'},
+      {'icon': Icons.home_rounded, 'key': 'home'},
+      {'icon': Icons.restaurant_menu_rounded, 'key': 'meals'},
+      {'icon': Icons.insert_chart_outlined_rounded, 'key': 'reports'},
+      {'icon': Icons.grid_view_rounded, 'key': 'menu'},
     ];
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: _cardColor,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.black.withOpacity(0.06), width: 0.5),
+        border: Border.all(color: _borderColor, width: 0.5),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: List.generate(items.length, (index) {
           final item = items[index];
-          final isMenu = item['label'] == 'Menu';
+          final key = item['key'] as String;
+          final isMenu = key == 'menu';
           final selected = selectedNavIndex == index && !isMenu;
 
           return GestureDetector(
@@ -1857,7 +2055,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
                 return;
               }
 
-              if (item['label'] == 'Reports') {
+              if (key == 'reports') {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -1867,7 +2065,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
                 return;
               }
 
-              if (item['label'] == 'Meals') {
+              if (key == 'meals') {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -1883,12 +2081,18 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
               duration: const Duration(milliseconds: 220),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               decoration: BoxDecoration(
-                color: selected ? const Color(0xffDDEEFF) : Colors.transparent,
+                color: selected
+                    ? (_isDark
+                          ? const Color(0xff183A5C)
+                          : const Color(0xffDDEEFF))
+                    : Colors.transparent,
                 borderRadius: BorderRadius.circular(14),
                 boxShadow: selected
                     ? [
                         BoxShadow(
-                          color: const Color(0xffC9E2FB).withOpacity(0.7),
+                          color:
+                              (_isDark ? Colors.black : const Color(0xffC9E2FB))
+                                  .withOpacity(0.35),
                           blurRadius: 10,
                           offset: const Offset(0, 4),
                         ),
@@ -1902,17 +2106,21 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
                     item['icon'] as IconData,
                     size: 19,
                     color: selected
-                        ? const Color(0xff185FA5)
-                        : const Color(0xff888780),
+                        ? (_isDark
+                              ? const Color(0xff8CC7F5)
+                              : const Color(0xff185FA5))
+                        : (_isDark ? _darkSubText : const Color(0xff888780)),
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    item['label'] as String,
+                    t(key),
                     style: TextStyle(
                       fontSize: 10,
                       color: selected
-                          ? const Color(0xff185FA5)
-                          : const Color(0xff888780),
+                          ? (_isDark
+                                ? const Color(0xff8CC7F5)
+                                : const Color(0xff185FA5))
+                          : (_isDark ? _darkSubText : const Color(0xff888780)),
                       fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
                     ),
                   ),
@@ -1930,11 +2138,15 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
       width: 40,
       height: 40,
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: _cardColor,
         shape: BoxShape.circle,
-        border: Border.all(color: Colors.black.withOpacity(0.05), width: 0.5),
+        border: Border.all(color: _borderColor, width: 0.5),
       ),
-      child: Icon(icon, size: 18, color: const Color(0xff378ADD)),
+      child: Icon(
+        icon,
+        size: 18,
+        color: _isDark ? const Color(0xff8CC7F5) : const Color(0xff378ADD),
+      ),
     );
   }
 
@@ -1954,9 +2166,9 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
         child: Ink(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
           decoration: BoxDecoration(
-            color: _softBlue,
+            color: _softCardColor,
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: const Color(0xffD8EBFF)),
+            border: Border.all(color: _tileBorderColor),
           ),
           child: Row(
             children: [
@@ -1964,7 +2176,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
                 width: 42,
                 height: 42,
                 decoration: BoxDecoration(
-                  color: _softBlue2,
+                  color: _iconBgColor,
                   borderRadius: BorderRadius.circular(13),
                 ),
                 child: Icon(icon, size: 20, color: _mainBlue),
@@ -1976,19 +2188,16 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
                   children: [
                     Text(
                       title,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 13.5,
                         fontWeight: FontWeight.w600,
-                        color: Color(0xff17466E),
+                        color: _titleColor,
                       ),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       status,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: Color(0xff7A9AB5),
-                      ),
+                      style: TextStyle(fontSize: 11, color: _subtitleColor),
                     ),
                   ],
                 ),
@@ -2031,8 +2240,8 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
         top: false,
         child: Container(
           padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
-          decoration: const BoxDecoration(
-            color: Color(0xffF9FCFF),
+          decoration: BoxDecoration(
+            color: _sheetBgColor,
             borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
           ),
           child: Column(
@@ -2041,23 +2250,23 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
               _sheetHandle(),
               const SizedBox(height: 14),
               Text(
-                mealTitle,
-                style: const TextStyle(
+                _trMealTitle(mealTitle),
+                style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.w700,
-                  color: _textBlue,
+                  color: _titleColor,
                 ),
               ),
               const SizedBox(height: 4),
-              const Text(
-                'Choose how you want to continue',
-                style: TextStyle(fontSize: 13, color: Color(0xff7A9AB5)),
+              Text(
+                t('chooseContinue'),
+                style: TextStyle(fontSize: 13, color: _subtitleColor),
               ),
               const SizedBox(height: 18),
               _sheetOption(
                 icon: Icons.edit_note_rounded,
-                title: 'Add my meal',
-                subtitle: 'Enter your meal and calculate carbs',
+                title: t('addMyMeal'),
+                subtitle: t('addMyMealSub'),
                 onTap: () {
                   final mealType = _mealTypeFromTitle(mealTitle);
 
@@ -2075,8 +2284,8 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
               const SizedBox(height: 10),
               _sheetOption(
                 icon: Icons.qr_code_scanner_rounded,
-                title: 'Scan barcode',
-                subtitle: 'Scan packaged food',
+                title: t('scanBarcode'),
+                subtitle: t('scanBarcodeSub'),
                 onTap: () async {
                   Navigator.pop(context);
                   final barcode = await Navigator.push(
@@ -2104,7 +2313,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
 
                   if (product == null) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Product not found')),
+                      SnackBar(content: Text(t('productNotFound'))),
                     );
                     return;
                   }
@@ -2134,8 +2343,8 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
               const SizedBox(height: 10),
               _sheetOption(
                 icon: Icons.lightbulb_outline_rounded,
-                title: 'Suggest a meal',
-                subtitle: "Get meal ideas if you're not sure",
+                title: t('suggestMeal'),
+                subtitle: t('suggestMealSub'),
                 onTap: () {
                   Navigator.pop(context);
                   Navigator.push(
@@ -2157,6 +2366,29 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
     );
   }
 
+  String _menuDisplayLabel(String label) {
+    switch (label) {
+      case 'Doctor':
+        return t('doctor');
+      case 'Contact':
+        return t('contact');
+      case 'Chat / Ask anything':
+        return t('chatAsk');
+      case 'Meal Plans':
+        return t('mealPlans');
+      case 'Nutritionist':
+        return t('nutritionist');
+      case 'Water':
+        return t('water');
+      case 'Activity':
+        return t('activity');
+      case 'Settings':
+        return t('settings');
+      default:
+        return label;
+    }
+  }
+
   void _showMainMenu() {
     final menuItems = [
       {'icon': Icons.medical_information_outlined, 'label': 'Doctor'},
@@ -2169,6 +2401,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
       {'icon': Icons.restaurant_outlined, 'label': 'Nutritionist'},
       {'icon': Icons.water_drop_outlined, 'label': 'Water'},
       {'icon': Icons.bolt_rounded, 'label': 'Activity'},
+      {'icon': Icons.settings_outlined, 'label': 'Settings'},
     ];
 
     showModalBottomSheet(
@@ -2184,20 +2417,20 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
           expand: false,
           builder: (context, scrollController) => Container(
             padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
-            decoration: const BoxDecoration(
-              color: Color(0xffF9FCFF),
+            decoration: BoxDecoration(
+              color: _sheetBgColor,
               borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
             ),
             child: Column(
               children: [
                 _sheetHandle(),
                 const SizedBox(height: 14),
-                const Text(
-                  'Menu',
+                Text(
+                  t('menu'),
                   style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.w700,
-                    color: _textBlue,
+                    color: _titleColor,
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -2208,11 +2441,21 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
                     separatorBuilder: (_, __) => const SizedBox(height: 10),
                     itemBuilder: (_, i) => _menuTile(
                       icon: menuItems[i]['icon'] as IconData,
-                      label: menuItems[i]['label'] as String,
+                      label: _menuDisplayLabel(menuItems[i]['label'] as String),
                       onTap: () {
                         final label = menuItems[i]['label'] as String;
 
                         Navigator.pop(context);
+                        if (label == 'Settings') {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  PatientSettingsScreen(userId: widget.userId),
+                            ),
+                          );
+                          return;
+                        }
 
                         if (label == 'Activity') {
                           Navigator.push(
@@ -2297,7 +2540,9 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
       width: 42,
       height: 4,
       decoration: BoxDecoration(
-        color: const Color(0xffC8DDEC),
+        color: _isDark
+            ? Colors.white.withOpacity(0.18)
+            : const Color(0xffC8DDEC),
         borderRadius: BorderRadius.circular(10),
       ),
     );
@@ -2319,9 +2564,9 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
         child: Ink(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: _softBlue,
+            color: _softCardColor,
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: const Color(0xffD8EBFF)),
+            border: Border.all(color: _tileBorderColor),
           ),
           child: Row(
             children: [
@@ -2329,7 +2574,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
                 width: 46,
                 height: 46,
                 decoration: BoxDecoration(
-                  color: _softBlue2,
+                  color: _iconBgColor,
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Icon(icon, size: 22, color: _mainBlue),
@@ -2341,19 +2586,16 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
                   children: [
                     Text(
                       title,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 14.5,
                         fontWeight: FontWeight.w600,
-                        color: _textBlue,
+                        color: _titleColor,
                       ),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       subtitle,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Color(0xff7A9AB5),
-                      ),
+                      style: TextStyle(fontSize: 12, color: _subtitleColor),
                     ),
                   ],
                 ),
@@ -2385,9 +2627,9 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
         child: Ink(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: _softBlue,
+            color: _softCardColor,
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: const Color(0xffD8EBFF)),
+            border: Border.all(color: _tileBorderColor),
           ),
           child: Row(
             children: [
@@ -2395,7 +2637,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
                 width: 46,
                 height: 46,
                 decoration: BoxDecoration(
-                  color: _softBlue2,
+                  color: _iconBgColor,
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Icon(icon, size: 22, color: _mainBlue),
@@ -2404,10 +2646,10 @@ class _PatientHomeScreenState extends State<PatientHomeScreen>
               Expanded(
                 child: Text(
                   label,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14.5,
                     fontWeight: FontWeight.w600,
-                    color: _textBlue,
+                    color: _titleColor,
                   ),
                 ),
               ),

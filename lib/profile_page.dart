@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../models/profile_model.dart';
+import '../providers/app_settings_provider.dart';
 import '../services/profile_api.dart';
 import 'auth_screen.dart';
 import 'notification_service.dart';
@@ -23,6 +26,126 @@ class _ProfilePageState extends State<ProfilePage> {
   final TextEditingController _weightController = TextEditingController();
   final TextEditingController _heightController = TextEditingController();
 
+  static const Color _lightBg = Color(0xFFF3F7FB);
+  static const Color _lightCard = Colors.white;
+  static const Color _lightRow = Color(0xFFF7FBFF);
+  static const Color _lightIconBg = Color(0xFFE4F3FF);
+  static const Color _lightTitle = Color(0xFF123B63);
+  static const Color _lightSubTitle = Color(0xFF6B7280);
+  static const Color _mainBlue = Color(0xFF1A73B8);
+
+  static const Color _darkBg = Color(0xff071A2F);
+  static const Color _darkCard = Color(0xff102A46);
+  static const Color _darkRow = Color(0xff183A5C);
+  static const Color _darkIconBg = Color(0xff173A5E);
+  static const Color _darkTitle = Colors.white;
+  static const Color _darkSubTitle = Color(0xffAFC7DD);
+
+  static const Map<String, Map<String, String>> _strings = {
+    'en': {
+      'profile': 'Profile',
+      'save': 'Save',
+      'edit': 'Edit',
+      'patientProfile': 'Patient Profile',
+      'type1Patient': 'Type 1 Diabetes Patient',
+
+      'personalInfo': 'Personal Information',
+      'age': 'Age',
+      'years': 'years',
+      'weight': 'Weight',
+      'height': 'Height',
+      'bmi': 'BMI',
+
+      'diabetesInfo': 'Diabetes Information',
+      'carbRatio': 'Carb Ratio',
+      'correctionFactor': 'Correction Factor',
+      'lantusDose': 'Lantus Dose',
+      'units': 'units',
+      'lantusTime': 'Lantus Time',
+
+      'foodAllergy': 'Food Allergy',
+      'allergy': 'Allergy',
+      'noFoodAllergy': 'No food allergy',
+
+      'doctor': 'Doctor',
+      'doctorName': 'Doctor Name',
+      'specialty': 'Specialty',
+
+      'notSet': 'Not set',
+      'logOut': 'Log Out',
+
+      'noLoggedUser': 'No logged-in user found',
+      'failedLoad': 'Failed to load profile data',
+      'validWeightHeight': 'Please enter valid weight and height',
+      'profileUpdated': 'Profile updated successfully',
+      'failedUpdate': 'Failed to update profile',
+    },
+    'ar': {
+      'profile': 'الملف الشخصي',
+      'save': 'حفظ',
+      'edit': 'تعديل',
+      'patientProfile': 'ملف المريض',
+      'type1Patient': 'مريض سكري النوع الأول',
+
+      'personalInfo': 'المعلومات الشخصية',
+      'age': 'العمر',
+      'years': 'سنة',
+      'weight': 'الوزن',
+      'height': 'الطول',
+      'bmi': 'مؤشر كتلة الجسم',
+
+      'diabetesInfo': 'معلومات السكري',
+      'carbRatio': 'نسبة الكربوهيدرات',
+      'correctionFactor': 'معامل التصحيح',
+      'lantusDose': 'جرعة اللانتوس',
+      'units': 'وحدات',
+      'lantusTime': 'وقت اللانتوس',
+
+      'foodAllergy': 'حساسية الطعام',
+      'allergy': 'الحساسية',
+      'noFoodAllergy': 'لا توجد حساسية طعام',
+
+      'doctor': 'الطبيب',
+      'doctorName': 'اسم الطبيب',
+      'specialty': 'التخصص',
+
+      'notSet': 'غير محدد',
+      'logOut': 'تسجيل الخروج',
+
+      'noLoggedUser': 'لا يوجد مستخدم مسجل الدخول',
+      'failedLoad': 'فشل تحميل بيانات الملف الشخصي',
+      'validWeightHeight': 'يرجى إدخال وزن وطول صحيحين',
+      'profileUpdated': 'تم تحديث الملف الشخصي بنجاح',
+      'failedUpdate': 'فشل تحديث الملف الشخصي',
+    },
+  };
+
+  bool get _isDark => Theme.of(context).brightness == Brightness.dark;
+
+  Color get _pageBg => _isDark ? _darkBg : _lightBg;
+  Color get _cardColor => _isDark ? _darkCard : _lightCard;
+  Color get _rowColor => _isDark ? _darkRow : _lightRow;
+  Color get _iconBgColor => _isDark ? _darkIconBg : _lightIconBg;
+  Color get _titleColor => _isDark ? _darkTitle : _lightTitle;
+  Color get _subTitleColor => _isDark ? _darkSubTitle : _lightSubTitle;
+  Color get _borderColor =>
+      _isDark ? Colors.white.withOpacity(0.08) : const Color(0xFFE1EEF8);
+  Color get _shadowColor =>
+      _isDark ? Colors.black.withOpacity(0.18) : Colors.black.withOpacity(0.07);
+
+  String get _language => context.read<AppSettingsProvider>().language;
+
+  bool get _isArabic => _language == 'ar';
+
+  TextDirection get _pageDirection {
+    return _isArabic ? TextDirection.rtl : TextDirection.ltr;
+  }
+
+  String t(String key) {
+    final lang = context.read<AppSettingsProvider>().language;
+    return _strings[lang]?[key] ?? _strings['en']?[key] ?? key;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -42,15 +165,17 @@ class _ProfilePageState extends State<ProfilePage> {
       final userId = prefs.getString('userId');
 
       if (userId == null || userId.isEmpty) {
+        if (!mounted) return;
         setState(() {
           _isLoading = false;
-          _errorMessage = 'No logged-in user found';
+          _errorMessage = t('noLoggedUser');
         });
         return;
       }
 
       final data = await ProfileApi.getProfile(userId);
 
+      if (!mounted) return;
       setState(() {
         profile = data;
         _weightController.text = data.weight?.toString() ?? '';
@@ -59,9 +184,10 @@ class _ProfilePageState extends State<ProfilePage> {
         _errorMessage = null;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
-        _errorMessage = 'Failed to load profile data';
+        _errorMessage = t('failedLoad');
       });
     }
   }
@@ -71,9 +197,9 @@ class _ProfilePageState extends State<ProfilePage> {
     final height = double.tryParse(_heightController.text.trim());
 
     if (weight == null || height == null || weight <= 0 || height <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter valid weight and height')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(t('validWeightHeight'))));
       return;
     }
 
@@ -84,7 +210,7 @@ class _ProfilePageState extends State<ProfilePage> {
       final userId = prefs.getString('userId');
 
       if (userId == null || userId.isEmpty) {
-        throw Exception('No logged-in user found');
+        throw Exception(t('noLoggedUser'));
       }
 
       await ProfileApi.updateProfile(
@@ -101,15 +227,15 @@ class _ProfilePageState extends State<ProfilePage> {
       });
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Profile updated successfully')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(t('profileUpdated'))));
     } catch (e) {
       setState(() => _isSaving = false);
 
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Failed to update profile: $e')));
+      ).showSnackBar(SnackBar(content: Text('${t('failedUpdate')}: $e')));
     }
   }
 
@@ -130,50 +256,55 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   String _value(dynamic value, {String suffix = ''}) {
-    if (value == null) return 'Not set';
+    if (value == null) return t('notSet');
     final text = value.toString();
-    if (text.trim().isEmpty) return 'Not set';
+    if (text.trim().isEmpty) return t('notSet');
     return suffix.isEmpty ? text : '$text $suffix';
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF3F7FB),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _errorMessage != null
-          ? Center(
-              child: Text(
-                _errorMessage!,
-                style: const TextStyle(color: Colors.red, fontSize: 16),
-              ),
-            )
-          : Column(
-              children: [
-                _buildHeader(),
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      children: [
-                        _buildUserCard(),
-                        const SizedBox(height: 16),
-                        _buildPersonalInfoCard(),
-                        const SizedBox(height: 16),
-                        _buildDiabetesCard(),
-                        const SizedBox(height: 16),
-                        _buildAllergyCard(),
-                        const SizedBox(height: 16),
-                        _buildDoctorCard(),
-                        const SizedBox(height: 24),
-                        _buildLogoutButton(),
-                      ],
+    context.watch<AppSettingsProvider>().language;
+
+    return Directionality(
+      textDirection: _pageDirection,
+      child: Scaffold(
+        backgroundColor: _pageBg,
+        body: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : _errorMessage != null
+            ? Center(
+                child: Text(
+                  _errorMessage!,
+                  style: const TextStyle(color: Colors.red, fontSize: 16),
+                ),
+              )
+            : Column(
+                children: [
+                  _buildHeader(),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        children: [
+                          _buildUserCard(),
+                          const SizedBox(height: 16),
+                          _buildPersonalInfoCard(),
+                          const SizedBox(height: 16),
+                          _buildDiabetesCard(),
+                          const SizedBox(height: 16),
+                          _buildAllergyCard(),
+                          const SizedBox(height: 16),
+                          _buildDoctorCard(),
+                          const SizedBox(height: 24),
+                          _buildLogoutButton(),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              ],
-            ),
+                ],
+              ),
+      ),
     );
   }
 
@@ -199,11 +330,11 @@ class _ProfilePageState extends State<ProfilePage> {
             onPressed: () => Navigator.maybePop(context),
             icon: const Icon(Icons.arrow_back, color: Colors.white),
           ),
-          const Expanded(
+          Expanded(
             child: Text(
-              'Profile',
+              t('profile'),
               textAlign: TextAlign.center,
-              style: TextStyle(
+              style: const TextStyle(
                 color: Colors.white,
                 fontSize: 22,
                 fontWeight: FontWeight.bold,
@@ -234,7 +365,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : Text(
-                      _isEditing ? 'Save' : 'Edit',
+                      _isEditing ? t('save') : t('edit'),
                       style: TextStyle(
                         color: _isEditing
                             ? const Color(0xFF1A73B8)
@@ -252,7 +383,7 @@ class _ProfilePageState extends State<ProfilePage> {
   Widget _buildUserCard() {
     final name = profile?.fullName.isNotEmpty == true
         ? profile!.fullName
-        : 'Patient Profile';
+        : t('patientProfile');
 
     return Container(
       width: double.infinity,
@@ -262,7 +393,7 @@ class _ProfilePageState extends State<ProfilePage> {
         children: [
           CircleAvatar(
             radius: 42,
-            backgroundColor: const Color(0xFFE4F3FF),
+            backgroundColor: _iconBgColor,
             child: Text(
               name[0].toUpperCase(),
               style: const TextStyle(
@@ -275,16 +406,16 @@ class _ProfilePageState extends State<ProfilePage> {
           const SizedBox(height: 12),
           Text(
             name,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.bold,
-              color: Color(0xFF123B63),
+              color: _titleColor,
             ),
           ),
           const SizedBox(height: 4),
-          const Text(
-            'Type 1 Diabetes Patient',
-            style: TextStyle(color: Colors.grey, fontSize: 14),
+          Text(
+            t('type1Patient'),
+            style: TextStyle(color: _subTitleColor, fontSize: 14),
           ),
         ],
       ),
@@ -295,30 +426,30 @@ class _ProfilePageState extends State<ProfilePage> {
     final bmi = _calculateBmi();
 
     return _buildSectionCard(
-      title: 'Personal Information',
+      title: t('personalInfo'),
       icon: Icons.person_outline,
       children: [
         _buildInfoRow(
           Icons.cake_outlined,
-          'Age',
-          _value(profile?.age, suffix: 'years'),
+          t('age'),
+          _value(profile?.age, suffix: t('years')),
         ),
         _buildEditableInfoRow(
           Icons.monitor_weight_outlined,
-          'Weight',
+          t('weight'),
           _weightController,
           'kg',
         ),
         _buildEditableInfoRow(
           Icons.height_outlined,
-          'Height',
+          t('height'),
           _heightController,
           'cm',
         ),
         _buildInfoRow(
           Icons.favorite_border,
-          'BMI',
-          bmi == null ? 'Not set' : bmi.toStringAsFixed(1),
+          t('bmi'),
+          bmi == null ? t('notSet') : bmi.toStringAsFixed(1),
         ),
       ],
     );
@@ -326,27 +457,27 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Widget _buildDiabetesCard() {
     return _buildSectionCard(
-      title: 'Diabetes Information',
+      title: t('diabetesInfo'),
       icon: Icons.medical_services_outlined,
       children: [
         _buildInfoRow(
           Icons.restaurant_menu,
-          'Carb Ratio',
+          t('carbRatio'),
           _value(profile?.carbRatio),
         ),
         _buildInfoRow(
           Icons.trending_down,
-          'Correction Factor',
+          t('correctionFactor'),
           _value(profile?.correctionFactor),
         ),
         _buildInfoRow(
           Icons.water_drop_outlined,
-          'Lantus Dose',
-          _value(profile?.lantusDose, suffix: 'units'),
+          t('lantusDose'),
+          _value(profile?.lantusDose, suffix: t('units')),
         ),
         _buildInfoRow(
           Icons.access_time,
-          'Lantus Time',
+          t('lantusTime'),
           _value(profile?.lantusTime),
         ),
       ],
@@ -357,15 +488,15 @@ class _ProfilePageState extends State<ProfilePage> {
     final hasAllergy = profile?.hasFoodAllergy == true;
     final allergyText = hasAllergy
         ? _value(profile?.allergyDetails)
-        : 'No food allergy';
+        : t('noFoodAllergy');
 
     return _buildSectionCard(
-      title: 'Food Allergy',
+      title: t('foodAllergy'),
       icon: Icons.warning_amber_rounded,
       children: [
         _buildInfoRow(
           hasAllergy ? Icons.error_outline : Icons.check_circle_outline,
-          'Allergy',
+          t('allergy'),
           allergyText,
         ),
       ],
@@ -374,13 +505,17 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Widget _buildDoctorCard() {
     return _buildSectionCard(
-      title: 'Doctor',
+      title: t('doctor'),
       icon: Icons.local_hospital_outlined,
       children: [
-        _buildInfoRow(Icons.person, 'Doctor Name', _value(profile?.doctorName)),
+        _buildInfoRow(
+          Icons.person,
+          t('doctorName'),
+          _value(profile?.doctorName),
+        ),
         _buildInfoRow(
           Icons.badge_outlined,
-          'Specialty',
+          t('specialty'),
           _value(profile?.doctorSpecialty),
         ),
       ],
@@ -403,16 +538,16 @@ class _ProfilePageState extends State<ProfilePage> {
             children: [
               CircleAvatar(
                 radius: 18,
-                backgroundColor: const Color(0xFFE4F3FF),
+                backgroundColor: _iconBgColor,
                 child: Icon(icon, color: const Color(0xFF1A73B8), size: 20),
               ),
               const SizedBox(width: 10),
               Text(
                 title,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 17,
                   fontWeight: FontWeight.bold,
-                  color: Color(0xFF123B63),
+                  color: _titleColor,
                 ),
               ),
             ],
@@ -429,9 +564,9 @@ class _ProfilePageState extends State<ProfilePage> {
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFFF7FBFF),
+        color: _rowColor,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE1EEF8)),
+        border: Border.all(color: _borderColor),
       ),
       child: Row(
         children: [
@@ -440,16 +575,16 @@ class _ProfilePageState extends State<ProfilePage> {
           Expanded(
             child: Text(
               label,
-              style: const TextStyle(fontSize: 14, color: Color(0xFF6B7280)),
+              style: TextStyle(fontSize: 14, color: _subTitleColor),
             ),
           ),
           Flexible(
             child: Text(
               value,
-              textAlign: TextAlign.right,
-              style: const TextStyle(
+              textAlign: TextAlign.end,
+              style: TextStyle(
                 fontSize: 15,
-                color: Color(0xFF123B63),
+                color: _titleColor,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -469,9 +604,9 @@ class _ProfilePageState extends State<ProfilePage> {
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFFF7FBFF),
+        color: _rowColor,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE1EEF8)),
+        border: Border.all(color: _borderColor),
       ),
       child: Row(
         children: [
@@ -480,7 +615,7 @@ class _ProfilePageState extends State<ProfilePage> {
           Expanded(
             child: Text(
               label,
-              style: const TextStyle(fontSize: 14, color: Color(0xFF6B7280)),
+              style: TextStyle(fontSize: 14, color: _subTitleColor),
             ),
           ),
           _isEditing
@@ -489,10 +624,12 @@ class _ProfilePageState extends State<ProfilePage> {
                   child: TextField(
                     controller: controller,
                     keyboardType: TextInputType.number,
-                    textAlign: TextAlign.right,
+                    textAlign: TextAlign.end,
+                    style: TextStyle(color: _titleColor),
                     decoration: InputDecoration(
                       isDense: true,
                       suffixText: suffix,
+                      suffixStyle: TextStyle(color: _subTitleColor),
                       border: const UnderlineInputBorder(),
                     ),
                   ),
@@ -500,12 +637,12 @@ class _ProfilePageState extends State<ProfilePage> {
               : Flexible(
                   child: Text(
                     controller.text.trim().isEmpty
-                        ? 'Not set'
+                        ? t('notSet')
                         : '${controller.text} $suffix',
-                    textAlign: TextAlign.right,
-                    style: const TextStyle(
+                    textAlign: TextAlign.end,
+                    style: TextStyle(
                       fontSize: 15,
-                      color: Color(0xFF123B63),
+                      color: _titleColor,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -517,11 +654,12 @@ class _ProfilePageState extends State<ProfilePage> {
 
   BoxDecoration _cardDecoration() {
     return BoxDecoration(
-      color: Colors.white,
+      color: _cardColor,
       borderRadius: BorderRadius.circular(22),
+      border: Border.all(color: _borderColor, width: 0.5),
       boxShadow: [
         BoxShadow(
-          color: Colors.black.withOpacity(0.07),
+          color: _shadowColor,
           blurRadius: 14,
           offset: const Offset(0, 6),
         ),
@@ -546,7 +684,7 @@ class _ProfilePageState extends State<ProfilePage> {
           );
         },
         icon: const Icon(Icons.logout),
-        label: const Text('Log Out'),
+        label: Text(t('logOut')),
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFFE74C4C),
           foregroundColor: Colors.white,
