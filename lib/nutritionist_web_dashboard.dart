@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'services/appointment_reminder_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
 import 'nutritionist_patient_details_page.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -9,6 +10,8 @@ import 'services/appointment_reminder_api.dart';
 import 'dart:async';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'auth_screen.dart';
+import 'patient_settings_screen.dart';
+import 'providers/app_settings_provider.dart';
 
 class NutritionistWebDashboard extends StatefulWidget {
   final String userId;
@@ -25,11 +28,86 @@ class _NutritionistWebDashboardState extends State<NutritionistWebDashboard> {
 
   final Color primaryBlue = const Color(0xFF0D8BFF);
   final Color deepBlue = const Color(0xFF0A4FA3);
-  final Color pageBg = const Color(0xFFEAF6FF);
-  final Color cardBg = const Color(0xFFF8FCFF);
-  final Color darkText = const Color(0xFF102A43);
-  final Color subText = const Color(0xFF5F7896);
-  final Color borderColor = const Color(0xFFBFDFFF);
+
+  static const Color _lightPageBg = Color(0xFFEAF6FF);
+  static const Color _lightCardBg = Color(0xFFF8FCFF);
+  static const Color _lightText = Color(0xFF102A43);
+  static const Color _lightSubText = Color(0xFF5F7896);
+  static const Color _lightBorder = Color(0xFFBFDFFF);
+
+  static const Color _darkPageBg = Color(0xff071A2F);
+  static const Color _darkCardBg = Color(0xff102A46);
+  static const Color _darkTileBg = Color(0xff183A5C);
+  static const Color _darkTextColor = Colors.white;
+  static const Color _darkSubText = Color(0xffAFC7DD);
+
+  bool get _isDark => context.watch<AppSettingsProvider>().darkMode;
+  bool get _isArabic => context.watch<AppSettingsProvider>().language == 'ar';
+
+  TextDirection get _pageDirection =>
+      _isArabic ? TextDirection.rtl : TextDirection.ltr;
+
+  Color get pageBg => _isDark ? _darkPageBg : _lightPageBg;
+  Color get cardBg => _isDark ? _darkCardBg : _lightCardBg;
+  Color get darkText => _isDark ? _darkTextColor : _lightText;
+  Color get subText => _isDark ? _darkSubText : _lightSubText;
+  Color get borderColor =>
+      _isDark ? Colors.white.withOpacity(0.08) : _lightBorder;
+  Color get tileBg => _isDark ? _darkTileBg : const Color(0xFFEAF6FF);
+
+  static const Map<String, Map<String, String>> _strings = {
+    'en': {
+      'dashboard': 'Dashboard',
+      'patients': 'Patients',
+      'appointments': 'Appointments',
+      'messages': 'Messages',
+      'mealPlans': 'Meal Plans',
+      'availableSlots': 'Available Slots',
+      'profile': 'Profile',
+      'settings': 'Settings',
+      'nutritionistPanel': 'Nutritionist Panel',
+      'loading': 'Loading...',
+      'logout': 'Logout',
+      'notifications': 'Notifications',
+      'appointmentReminders': 'Appointment reminders',
+      'noNotificationsYet': 'No notifications yet',
+      'appointmentAlertsHere': 'Appointment alerts will appear here.',
+      'markRead': 'Mark read',
+    },
+    'ar': {
+      'dashboard': 'لوحة التحكم',
+      'patients': 'المرضى',
+      'appointments': 'المواعيد',
+      'messages': 'الرسائل',
+      'mealPlans': 'خطط الوجبات',
+      'availableSlots': 'الأوقات المتاحة',
+      'profile': 'الملف الشخصي',
+      'settings': 'الإعدادات',
+      'nutritionistPanel': 'لوحة أخصائي التغذية',
+      'loading': 'جاري التحميل...',
+      'logout': 'تسجيل الخروج',
+      'notifications': 'الإشعارات',
+      'appointmentReminders': 'تذكيرات المواعيد',
+      'noNotificationsYet': 'لا توجد إشعارات بعد',
+      'appointmentAlertsHere': 'ستظهر تنبيهات المواعيد هنا.',
+      'markRead': 'تحديد كمقروء',
+    },
+  };
+
+  String t(String key) {
+    final lang = context.read<AppSettingsProvider>().language;
+    return _strings[lang]?[key] ?? _strings['en']?[key] ?? key;
+  }
+
+  void _openSettings() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PatientSettingsScreen(userId: widget.userId),
+      ),
+    );
+  }
+
   final TextEditingController firstNameController = TextEditingController();
   final TextEditingController lastNameController = TextEditingController();
   final TextEditingController phoneController = TextEditingController();
@@ -184,14 +262,14 @@ class _NutritionistWebDashboardState extends State<NutritionistWebDashboard> {
     return 'U';
   }
 
-  final List<String> menuItems = [
-    'Dashboard',
-    'Patients',
-    'Appointments',
-    'Messages',
-    'Meal Plans',
-    'Available Slots',
-    'Profile',
+  List<String> get menuItems => [
+    t('dashboard'),
+    t('patients'),
+    t('appointments'),
+    t('messages'),
+    t('mealPlans'),
+    t('availableSlots'),
+    t('profile'),
   ];
   List<dynamic> get filteredAppointments {
     if (selectedAppointmentFilter == 'all') {
@@ -998,22 +1076,22 @@ class _NutritionistWebDashboardState extends State<NutritionistWebDashboard> {
                           ),
                         ),
                         const SizedBox(width: 14),
-                        const Expanded(
+                        Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Notifications',
-                                style: TextStyle(
+                                t('notifications'),
+                                style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 23,
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
-                              SizedBox(height: 3),
+                              const SizedBox(height: 3),
                               Text(
-                                'Appointment reminders',
-                                style: TextStyle(
+                                t('appointmentReminders'),
+                                style: const TextStyle(
                                   color: Colors.white70,
                                   fontSize: 13,
                                 ),
@@ -1061,9 +1139,9 @@ class _NutritionistWebDashboardState extends State<NutritionistWebDashboard> {
                                   ),
                                 ),
                                 const SizedBox(height: 5),
-                                const Text(
-                                  'Appointment alerts will appear here.',
-                                  style: TextStyle(
+                                Text(
+                                  t('appointmentAlertsHere'),
+                                  style: const TextStyle(
                                     color: Colors.black45,
                                     fontSize: 13,
                                   ),
@@ -1216,8 +1294,8 @@ class _NutritionistWebDashboardState extends State<NutritionistWebDashboard> {
 
                                                         setModalState(() {});
                                                       },
-                                                      child: const Text(
-                                                        'Mark read',
+                                                      child: Text(
+                                                        t('markRead'),
                                                       ),
                                                     ),
                                                 ],
@@ -2464,36 +2542,46 @@ class _NutritionistWebDashboardState extends State<NutritionistWebDashboard> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: pageBg,
-      body: Row(
-        children: [
-          _buildSidebar(),
-          Expanded(
-            child: Container(
-              color: pageBg,
-              child: SafeArea(
-                child: Align(
-                  alignment: Alignment.topCenter,
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 1500),
-                    child: Column(
-                      children: [
-                        _buildTopBar(),
-                        Expanded(
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
-                            child: _buildSelectedPage(),
+    context.watch<AppSettingsProvider>();
+
+    return Directionality(
+      textDirection: _pageDirection,
+      child: Scaffold(
+        backgroundColor: pageBg,
+        body: Row(
+          children: [
+            _buildSidebar(),
+            Expanded(
+              child: Container(
+                color: pageBg,
+                child: SafeArea(
+                  child: Align(
+                    alignment: Alignment.topCenter,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 1500),
+                      child: Column(
+                        children: [
+                          _buildTopBar(),
+                          Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(
+                                24,
+                                20,
+                                24,
+                                24,
+                              ),
+                              child: _buildSelectedPage(),
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -2543,9 +2631,9 @@ class _NutritionistWebDashboardState extends State<NutritionistWebDashboard> {
             ),
           ),
           const SizedBox(height: 14),
-          const Text(
-            'Nutritionist Panel',
-            style: TextStyle(
+          Text(
+            t('nutritionistPanel'),
+            style: const TextStyle(
               color: Colors.white,
               fontSize: 18,
               fontWeight: FontWeight.w700,
@@ -2555,7 +2643,7 @@ class _NutritionistWebDashboardState extends State<NutritionistWebDashboard> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 18),
             child: Text(
-              isLoadingProfile ? 'Loading...' : fullName,
+              isLoadingProfile ? t('loading') : fullName,
               textAlign: TextAlign.center,
               style: const TextStyle(
                 color: Colors.white70,
@@ -2581,22 +2669,22 @@ class _NutritionistWebDashboardState extends State<NutritionistWebDashboard> {
                     setState(() {
                       selectedIndex = index;
                     });
-                    if (menuItems[index] == 'Dashboard') {
+                    if (index == 0) {
                       fetchNutritionistDashboard();
                     }
-                    if (menuItems[index] == 'Appointments') {
+                    if (index == 2) {
                       fetchNutritionistAppointments();
                     }
 
-                    if (menuItems[index] == 'Messages') {
+                    if (index == 3) {
                       fetchConversations();
                     }
 
-                    if (menuItems[index] == 'Meal Plans') {
+                    if (index == 4) {
                       fetchNutritionistAppointments();
                       fetchNutritionistMealPlans();
                     }
-                    if (menuItems[index] == 'Available Slots') {
+                    if (index == 5) {
                       fetchSavedAvailabilities();
                     }
                   },
@@ -2638,6 +2726,41 @@ class _NutritionistWebDashboardState extends State<NutritionistWebDashboard> {
             ),
           ),
           Padding(
+            padding: const EdgeInsets.fromLTRB(14, 8, 14, 6),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(16),
+              onTap: _openSettings,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.16),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.settings_outlined,
+                      color: Colors.white,
+                      size: 22,
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      t('settings'),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Padding(
             padding: const EdgeInsets.fromLTRB(14, 8, 14, 18),
             child: InkWell(
               borderRadius: BorderRadius.circular(16),
@@ -2651,13 +2774,17 @@ class _NutritionistWebDashboardState extends State<NutritionistWebDashboard> {
                   color: Colors.white.withOpacity(0.16),
                   borderRadius: BorderRadius.circular(16),
                 ),
-                child: const Row(
+                child: Row(
                   children: [
-                    Icon(Icons.logout_rounded, color: Colors.white, size: 22),
-                    SizedBox(width: 12),
+                    const Icon(
+                      Icons.logout_rounded,
+                      color: Colors.white,
+                      size: 22,
+                    ),
+                    const SizedBox(width: 12),
                     Text(
-                      'Logout',
-                      style: TextStyle(
+                      t('logout'),
+                      style: const TextStyle(
                         color: Colors.white,
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
@@ -2686,7 +2813,7 @@ class _NutritionistWebDashboardState extends State<NutritionistWebDashboard> {
         width: double.infinity,
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-          color: const Color(0xFFEAF6FF),
+          color: tileBg,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: borderColor),
         ),
@@ -2785,7 +2912,7 @@ class _NutritionistWebDashboardState extends State<NutritionistWebDashboard> {
       height: 86,
       padding: const EdgeInsets.symmetric(horizontal: 24),
       decoration: BoxDecoration(
-        color: const Color(0xFFF2FAFF),
+        color: cardBg,
         border: Border(bottom: BorderSide(color: borderColor)),
       ),
       child: Row(
@@ -2799,7 +2926,12 @@ class _NutritionistWebDashboardState extends State<NutritionistWebDashboard> {
             ),
           ),
           const Spacer(),
-          const SizedBox(width: 16),
+          IconButton(
+            onPressed: _openSettings,
+            icon: Icon(Icons.settings_outlined, color: deepBlue),
+            tooltip: t('settings'),
+          ),
+          const SizedBox(width: 12),
           _buildNotificationButton(),
           const SizedBox(width: 16),
           _buildProfileChip(),

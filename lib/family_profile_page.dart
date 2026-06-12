@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'services/family_api.dart';
 import 'auth_screen.dart';
+import 'providers/app_settings_provider.dart';
 
 class FamilyProfilePage extends StatefulWidget {
   final String familyUserId;
@@ -31,6 +33,87 @@ class _FamilyProfilePageState extends State<FamilyProfilePage> {
   static const Color _mainBlue = Color(0xff185FA5);
   static const Color _textBlue = Color(0xff0C447C);
   static const Color _softBlue = Color(0xffEAF6FF);
+
+  static const Color _darkBg = Color(0xff071A2F);
+  static const Color _darkCard = Color(0xff102A46);
+  static const Color _darkTile = Color(0xff183A5C);
+  static const Color _darkSubText = Color(0xffAFC7DD);
+
+  static const Map<String, Map<String, String>> _strings = {
+    'en': {
+      'familyProfile': 'Family Profile',
+      'edit': 'Edit',
+      'logout': 'Logout',
+      'editFamilyInformation': 'Edit Family Information',
+      'fullName': 'Full Name',
+      'relationship': 'Relationship',
+      'phone': 'Phone',
+      'mother': 'Mother',
+      'father': 'Father',
+      'sibling': 'Sibling',
+      'relative': 'Relative',
+      'caregiver': 'Caregiver',
+      'cancel': 'Cancel',
+      'save': 'Save',
+      'saving': 'Saving...',
+      'pleaseFillAllFields': 'Please fill all fields',
+      'profileUpdated': 'Profile updated successfully',
+      'failedLoadProfile': 'Failed to load family profile',
+      'familyMember': 'Family Member',
+      'familyInformation': 'Family Information',
+      'name': 'Name',
+      'linkedPatient': 'Linked Patient',
+      'patient': 'Patient',
+      'email': 'Email',
+    },
+    'ar': {
+      'familyProfile': 'ملف الأهل',
+      'edit': 'تعديل',
+      'logout': 'تسجيل الخروج',
+      'editFamilyInformation': 'تعديل معلومات الأهل',
+      'fullName': 'الاسم الكامل',
+      'relationship': 'صلة القرابة',
+      'phone': 'رقم الهاتف',
+      'mother': 'الأم',
+      'father': 'الأب',
+      'sibling': 'الأخ/الأخت',
+      'relative': 'قريب',
+      'caregiver': 'مرافق',
+      'cancel': 'إلغاء',
+      'save': 'حفظ',
+      'saving': 'جاري الحفظ...',
+      'pleaseFillAllFields': 'يرجى تعبئة جميع الحقول',
+      'profileUpdated': 'تم تحديث الملف بنجاح',
+      'failedLoadProfile': 'فشل تحميل ملف الأهل',
+      'familyMember': 'فرد من الأهل',
+      'familyInformation': 'معلومات الأهل',
+      'name': 'الاسم',
+      'linkedPatient': 'المريض المرتبط',
+      'patient': 'المريض',
+      'email': 'البريد الإلكتروني',
+    },
+  };
+
+  String t(String key) {
+    final lang = context.watch<AppSettingsProvider>().language;
+    return _strings[lang]?[key] ?? _strings['en']?[key] ?? key;
+  }
+
+  bool get _isArabic => context.watch<AppSettingsProvider>().language == 'ar';
+  bool get _isDark => context.watch<AppSettingsProvider>().darkMode;
+
+  TextDirection get _pageDirection =>
+      _isArabic ? TextDirection.rtl : TextDirection.ltr;
+
+  Color get _pageBg => _isDark ? _darkBg : _softBlue;
+  Color get _cardColor => _isDark ? _darkCard : Colors.white;
+  Color get _tileColor => _isDark ? _darkTile : const Color(0xffF8FCFF);
+  Color get _titleColor => _isDark ? Colors.white : _textBlue;
+  Color get _subtitleColor => _isDark ? _darkSubText : const Color(0xff6D8AA5);
+  Color get _borderColor =>
+      _isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.04);
+  Color get _inputBorderColor =>
+      _isDark ? Colors.white.withOpacity(0.12) : const Color(0xffBBDEFB);
 
   @override
   void initState() {
@@ -79,9 +162,9 @@ class _FamilyProfilePageState extends State<FamilyProfilePage> {
 
       setState(() => isLoading = false);
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to load family profile: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('${t('failedLoadProfile')}: $e')));
     }
   }
 
@@ -101,6 +184,23 @@ class _FamilyProfilePageState extends State<FamilyProfilePage> {
     );
   }
 
+  String _relationshipDisplay(String value) {
+    switch (value) {
+      case 'Mother':
+        return t('mother');
+      case 'Father':
+        return t('father');
+      case 'Sibling':
+        return t('sibling');
+      case 'Relative':
+        return t('relative');
+      case 'Caregiver':
+        return t('caregiver');
+      default:
+        return value.trim().isEmpty ? '-' : value;
+    }
+  }
+
   void _showEditFamilyDialog() {
     parentNameController.text = parentName;
     phoneController.text = phone;
@@ -111,152 +211,161 @@ class _FamilyProfilePageState extends State<FamilyProfilePage> {
     showDialog(
       context: context,
       builder: (_) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(22),
-              ),
-              title: const Text(
-                'Edit Family Information',
-                style: TextStyle(color: _textBlue, fontWeight: FontWeight.w700),
-              ),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    TextField(
-                      controller: parentNameController,
-                      decoration: _dialogInputDecoration(
-                        label: 'Full Name',
-                        icon: Icons.person_outline,
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    DropdownButtonFormField<String>(
-                      value: selectedRelationship,
-                      isExpanded: true,
-                      decoration: _dialogInputDecoration(
-                        label: 'Relationship',
-                        icon: Icons.family_restroom,
-                      ),
-                      items: const [
-                        DropdownMenuItem(
-                          value: 'Mother',
-                          child: Text('Mother'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'Father',
-                          child: Text('Father'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'Sibling',
-                          child: Text('Sibling'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'Relative',
-                          child: Text('Relative'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'Caregiver',
-                          child: Text('Caregiver'),
-                        ),
-                      ],
-                      onChanged: (value) {
-                        if (value == null) return;
-
-                        setDialogState(() {
-                          selectedRelationship = value;
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 14),
-                    TextField(
-                      controller: phoneController,
-                      keyboardType: TextInputType.phone,
-                      decoration: _dialogInputDecoration(
-                        label: 'Phone',
-                        icon: Icons.phone_outlined,
-                      ),
-                    ),
-                  ],
+        return Directionality(
+          textDirection: _pageDirection,
+          child: StatefulBuilder(
+            builder: (context, setDialogState) {
+              return AlertDialog(
+                backgroundColor: _cardColor,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(22),
                 ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: isSaving
-                      ? null
-                      : () {
-                          Navigator.pop(context);
-                        },
-                  child: const Text('Cancel'),
-                ),
-                ElevatedButton(
-                  onPressed: isSaving
-                      ? null
-                      : () async {
-                          final name = parentNameController.text.trim();
-                          final phoneText = phoneController.text.trim();
-
-                          if (name.isEmpty || phoneText.isEmpty) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Please fill all fields'),
-                              ),
-                            );
-                            return;
-                          }
-
-                          setDialogState(() => isSaving = true);
-
-                          try {
-                            await FamilyApi.updateFamilyProfile(
-                              userId: widget.familyUserId,
-                              parentName: name,
-                              relationship: selectedRelationship,
-                              phone: phoneText,
-                            );
-
-                            if (!mounted) return;
-
-                            setState(() {
-                              parentName = name;
-                              relationship = selectedRelationship;
-                              phone = phoneText;
-                            });
-
-                            Navigator.pop(context);
-
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Profile updated successfully'),
-                              ),
-                            );
-                          } catch (e) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  e.toString().replaceAll('Exception: ', ''),
-                                ),
-                              ),
-                            );
-                          } finally {
-                            setDialogState(() => isSaving = false);
-                          }
-                        },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _mainBlue,
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                title: Text(
+                  t('editFamilyInformation'),
+                  style: TextStyle(
+                    color: _titleColor,
+                    fontWeight: FontWeight.w700,
                   ),
-                  child: Text(isSaving ? 'Saving...' : 'Save'),
                 ),
-              ],
-            );
-          },
+                content: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextField(
+                        controller: parentNameController,
+                        style: TextStyle(color: _titleColor),
+                        decoration: _dialogInputDecoration(
+                          label: t('fullName'),
+                          icon: Icons.person_outline,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      DropdownButtonFormField<String>(
+                        value: selectedRelationship,
+                        isExpanded: true,
+                        dropdownColor: _cardColor,
+                        style: TextStyle(color: _titleColor),
+                        decoration: _dialogInputDecoration(
+                          label: t('relationship'),
+                          icon: Icons.family_restroom,
+                        ),
+                        items: [
+                          DropdownMenuItem(
+                            value: 'Mother',
+                            child: Text(t('mother')),
+                          ),
+                          DropdownMenuItem(
+                            value: 'Father',
+                            child: Text(t('father')),
+                          ),
+                          DropdownMenuItem(
+                            value: 'Sibling',
+                            child: Text(t('sibling')),
+                          ),
+                          DropdownMenuItem(
+                            value: 'Relative',
+                            child: Text(t('relative')),
+                          ),
+                          DropdownMenuItem(
+                            value: 'Caregiver',
+                            child: Text(t('caregiver')),
+                          ),
+                        ],
+                        onChanged: (value) {
+                          if (value == null) return;
+
+                          setDialogState(() {
+                            selectedRelationship = value;
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 14),
+                      TextField(
+                        controller: phoneController,
+                        keyboardType: TextInputType.phone,
+                        style: TextStyle(color: _titleColor),
+                        decoration: _dialogInputDecoration(
+                          label: t('phone'),
+                          icon: Icons.phone_outlined,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: isSaving
+                        ? null
+                        : () {
+                            Navigator.pop(context);
+                          },
+                    child: Text(t('cancel')),
+                  ),
+                  ElevatedButton(
+                    onPressed: isSaving
+                        ? null
+                        : () async {
+                            final name = parentNameController.text.trim();
+                            final phoneText = phoneController.text.trim();
+
+                            if (name.isEmpty || phoneText.isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(t('pleaseFillAllFields')),
+                                ),
+                              );
+                              return;
+                            }
+
+                            setDialogState(() => isSaving = true);
+
+                            try {
+                              await FamilyApi.updateFamilyProfile(
+                                userId: widget.familyUserId,
+                                parentName: name,
+                                relationship: selectedRelationship,
+                                phone: phoneText,
+                              );
+
+                              if (!mounted) return;
+
+                              setState(() {
+                                parentName = name;
+                                relationship = selectedRelationship;
+                                phone = phoneText;
+                              });
+
+                              Navigator.pop(context);
+
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text(t('profileUpdated'))),
+                              );
+                            } catch (e) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    e.toString().replaceAll('Exception: ', ''),
+                                  ),
+                                ),
+                              );
+                            } finally {
+                              setDialogState(() => isSaving = false);
+                            }
+                          },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _mainBlue,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: Text(isSaving ? t('saving') : t('save')),
+                  ),
+                ],
+              );
+            },
+          ),
         );
       },
     );
@@ -268,16 +377,17 @@ class _FamilyProfilePageState extends State<FamilyProfilePage> {
   }) {
     return InputDecoration(
       labelText: label,
+      labelStyle: TextStyle(color: _subtitleColor),
       prefixIcon: Icon(icon, color: _mainBlue),
       filled: true,
-      fillColor: const Color(0xffF8FCFF),
+      fillColor: _tileColor,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(15),
-        borderSide: const BorderSide(color: Color(0xffBBDEFB)),
+        borderSide: BorderSide(color: _inputBorderColor),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(15),
-        borderSide: const BorderSide(color: Color(0xffBBDEFB)),
+        borderSide: BorderSide(color: _inputBorderColor),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(15),
@@ -288,60 +398,66 @@ class _FamilyProfilePageState extends State<FamilyProfilePage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: _softBlue,
-      appBar: AppBar(
-        title: const Text('Family Profile'),
-        backgroundColor: _mainBlue,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        actions: [
-          IconButton(
-            onPressed: isLoading ? null : _showEditFamilyDialog,
-            icon: const Icon(Icons.edit_outlined),
-            tooltip: 'Edit',
-          ),
-          IconButton(
-            onPressed: _logout,
-            icon: const Icon(Icons.logout_rounded),
-            tooltip: 'Logout',
-          ),
-        ],
-      ),
-      body: isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _loadFamilyProfile,
-              child: SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    _mainCard(),
-                    const SizedBox(height: 14),
-                    _infoCard(
-                      title: 'Family Information',
-                      children: [
-                        _row('Name', parentName),
-                        _row('Relationship', relationship),
-                        _row('Phone', phone),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-                    _infoCard(
-                      title: 'Linked Patient',
-                      children: [
-                        _row(
-                          'Patient',
-                          patientName.isEmpty ? 'Patient' : patientName,
-                        ),
-                        _row('Email', patientEmail),
-                      ],
-                    ),
-                  ],
+    return Directionality(
+      textDirection: _pageDirection,
+      child: Scaffold(
+        backgroundColor: _pageBg,
+        appBar: AppBar(
+          title: Text(t('familyProfile')),
+          backgroundColor: _isDark ? const Color(0xff102A46) : _mainBlue,
+          foregroundColor: Colors.white,
+          elevation: 0,
+          actions: [
+            IconButton(
+              onPressed: isLoading ? null : _showEditFamilyDialog,
+              icon: const Icon(Icons.edit_outlined),
+              tooltip: t('edit'),
+            ),
+            IconButton(
+              onPressed: _logout,
+              icon: const Icon(Icons.logout_rounded),
+              tooltip: t('logout'),
+            ),
+          ],
+        ),
+        body: isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : RefreshIndicator(
+                onRefresh: _loadFamilyProfile,
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      _mainCard(),
+                      const SizedBox(height: 14),
+                      _infoCard(
+                        title: t('familyInformation'),
+                        children: [
+                          _row(t('name'), parentName),
+                          _row(
+                            t('relationship'),
+                            _relationshipDisplay(relationship),
+                          ),
+                          _row(t('phone'), phone),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      _infoCard(
+                        title: t('linkedPatient'),
+                        children: [
+                          _row(
+                            t('patient'),
+                            patientName.isEmpty ? t('patient') : patientName,
+                          ),
+                          _row(t('email'), patientEmail),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
+      ),
     );
   }
 
@@ -354,7 +470,7 @@ class _FamilyProfilePageState extends State<FamilyProfilePage> {
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: _mainBlue.withOpacity(0.18),
+            color: _mainBlue.withOpacity(_isDark ? 0.10 : 0.18),
             blurRadius: 18,
             offset: const Offset(0, 8),
           ),
@@ -377,7 +493,7 @@ class _FamilyProfilePageState extends State<FamilyProfilePage> {
           ),
           const SizedBox(height: 12),
           Text(
-            parentName.isEmpty ? 'Family Member' : parentName,
+            parentName.isEmpty ? t('familyMember') : parentName,
             textAlign: TextAlign.center,
             style: const TextStyle(
               color: Colors.white,
@@ -387,7 +503,7 @@ class _FamilyProfilePageState extends State<FamilyProfilePage> {
           ),
           const SizedBox(height: 4),
           Text(
-            relationship.isEmpty ? '-' : relationship,
+            relationship.isEmpty ? '-' : _relationshipDisplay(relationship),
             style: const TextStyle(color: Colors.white70, fontSize: 14),
           ),
         ],
@@ -400,17 +516,17 @@ class _FamilyProfilePageState extends State<FamilyProfilePage> {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: _cardColor,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: Colors.black.withOpacity(0.04), width: 0.5),
+        border: Border.all(color: _borderColor, width: 0.5),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             title,
-            style: const TextStyle(
-              color: _textBlue,
+            style: TextStyle(
+              color: _titleColor,
               fontSize: 17,
               fontWeight: FontWeight.w700,
             ),
@@ -432,8 +548,8 @@ class _FamilyProfilePageState extends State<FamilyProfilePage> {
             width: 108,
             child: Text(
               label,
-              style: const TextStyle(
-                color: Color(0xff6D8AA5),
+              style: TextStyle(
+                color: _subtitleColor,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -441,10 +557,7 @@ class _FamilyProfilePageState extends State<FamilyProfilePage> {
           Expanded(
             child: Text(
               value.trim().isEmpty ? '-' : value,
-              style: const TextStyle(
-                color: _textBlue,
-                fontWeight: FontWeight.w700,
-              ),
+              style: TextStyle(color: _titleColor, fontWeight: FontWeight.w700),
             ),
           ),
         ],

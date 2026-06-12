@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:provider/provider.dart';
+
+import 'providers/app_settings_provider.dart';
+
 import 'services/appointment_reminder_service.dart';
 import 'firebase_options.dart';
 import 'notification_service.dart';
@@ -36,7 +40,15 @@ void main() async {
   final savedUserId = prefs.getString('userId');
   final savedRole = prefs.getString('role');
 
-  runApp(MyApp(savedUserId: savedUserId, savedRole: savedRole));
+  final appSettingsProvider = AppSettingsProvider();
+  await appSettingsProvider.loadSettings();
+
+  runApp(
+    ChangeNotifierProvider<AppSettingsProvider>.value(
+      value: appSettingsProvider,
+      child: MyApp(savedUserId: savedUserId, savedRole: savedRole),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
@@ -47,8 +59,31 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final settings = context.watch<AppSettingsProvider>();
+
     return MaterialApp(
       debugShowCheckedModeBanner: false,
+      themeMode: settings.themeMode,
+      theme: ThemeData(
+        brightness: Brightness.light,
+        useMaterial3: true,
+        scaffoldBackgroundColor: const Color(0xffEAF6FF),
+        primaryColor: const Color(0xff185FA5),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xff185FA5),
+          brightness: Brightness.light,
+        ),
+      ),
+      darkTheme: ThemeData(
+        brightness: Brightness.dark,
+        useMaterial3: true,
+        scaffoldBackgroundColor: const Color(0xff071A2F),
+        primaryColor: const Color(0xff185FA5),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xff185FA5),
+          brightness: Brightness.dark,
+        ),
+      ),
       home: StartScreen(savedUserId: savedUserId, savedRole: savedRole),
     );
   }
@@ -97,6 +132,7 @@ class _StartScreenState extends State<StartScreen> {
       });
       return;
     }
+
     if (role == 'doctor') {
       setState(() {
         startScreen = DoctorWebDashboard(doctorId: userId);
@@ -112,6 +148,7 @@ class _StartScreenState extends State<StartScreen> {
       });
       return;
     }
+
     if (role == 'family') {
       try {
         final familyData = await FamilyApi.getFamilyProfile(userId);
@@ -157,9 +194,9 @@ class _StartScreenState extends State<StartScreen> {
   @override
   Widget build(BuildContext context) {
     if (isLoading) {
-      return const Scaffold(
-        backgroundColor: Color(0xffEAF6FF),
-        body: Center(child: CircularProgressIndicator()),
+      return Scaffold(
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        body: const Center(child: CircularProgressIndicator()),
       );
     }
 

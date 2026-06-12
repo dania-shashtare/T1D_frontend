@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'services/doctor_dashboard_api.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'services/glucose_api.dart';
@@ -7,6 +8,8 @@ import 'services/doctor_appointment_api.dart';
 import 'reports_screen.dart';
 import 'chat_page.dart';
 import 'services/appointment_reminder_service.dart';
+import 'patient_settings_screen.dart';
+import 'providers/app_settings_provider.dart';
 import 'dart:async';
 
 class DoctorWebDashboard extends StatefulWidget {
@@ -29,6 +32,124 @@ class _DoctorWebDashboardState extends State<DoctorWebDashboard> {
   static const Color green = Color(0xff1D9E75);
   static const Color orange = Color(0xffEF9F27);
   static const Color red = Color(0xffE24B4A);
+
+  static const Color darkBg = Color(0xff071A2F);
+  static const Color darkCard = Color(0xff102A46);
+  static const Color darkTile = Color(0xff183A5C);
+  static const Color darkText = Colors.white;
+  static const Color darkSubText = Color(0xffAFC7DD);
+
+  static const Map<String, Map<String, String>> _strings = {
+    'en': {
+      'dashboard': 'Dashboard',
+      'myPatients': 'My Patients',
+      'appointments': 'Appointments',
+      'messages': 'Messages',
+      'profile': 'Profile',
+      'settings': 'Settings',
+      'doctorPanel': 'Doctor Panel',
+      't1dCareDashboard': 'T1D Care Dashboard',
+      'logout': 'Logout',
+      'logoutQuestion': 'Are you sure you want to logout?',
+      'cancel': 'Cancel',
+      'notifications': 'Notifications',
+      'appointmentReminders': 'Appointment reminders',
+      'noNotificationsYet': 'No notifications yet',
+      'appointmentAlertsHere': 'Appointment alerts will appear here.',
+      'markRead': 'Mark read',
+      'view': 'View',
+      'welcomeBack': 'Welcome back',
+      'welcomeSubtitle':
+          'Here is your patients overview for today. Review urgent glucose cases and manage appointments easily.',
+      'totalPatients': 'Total Patients',
+      'activePatients': 'Active patients',
+      'highRiskCases': 'High Risk Cases',
+      'needReview': 'Need review',
+      'noUrgentCases': 'No urgent cases',
+      'inRangePatients': 'In Range Patients',
+      'stablePatients': 'Stable patients',
+      'highRiskPatients': 'High Risk Patients',
+      'todayAppointments': 'Today Appointments',
+      'noHighRiskPatients': 'No high risk patients right now.',
+      'noAppointmentsYet': 'No appointments yet.',
+      'doctorDashboard': 'Doctor Dashboard',
+      'smallScreenMessage':
+          'This dashboard works best on tablet, laptop, or desktop screens for better chart and appointment management.',
+      'appointmentReminder': 'Appointment reminder',
+      'appointmentNow': 'Appointment now',
+      'startsIn5': 'starts in 5 minutes.',
+      'startingNow': 'is starting now.',
+    },
+    'ar': {
+      'dashboard': 'لوحة التحكم',
+      'myPatients': 'مرضاي',
+      'appointments': 'المواعيد',
+      'messages': 'الرسائل',
+      'profile': 'الملف الشخصي',
+      'settings': 'الإعدادات',
+      'doctorPanel': 'لوحة الطبيب',
+      't1dCareDashboard': 'لوحة متابعة السكري',
+      'logout': 'تسجيل الخروج',
+      'logoutQuestion': 'هل أنت متأكد أنك تريد تسجيل الخروج؟',
+      'cancel': 'إلغاء',
+      'notifications': 'الإشعارات',
+      'appointmentReminders': 'تذكيرات المواعيد',
+      'noNotificationsYet': 'لا توجد إشعارات بعد',
+      'appointmentAlertsHere': 'ستظهر تنبيهات المواعيد هنا.',
+      'markRead': 'تحديد كمقروء',
+      'view': 'عرض',
+      'welcomeBack': 'أهلًا بعودتك',
+      'welcomeSubtitle':
+          'هنا ملخص المرضى لهذا اليوم. راجع الحالات الطارئة ونظّم المواعيد بسهولة.',
+      'totalPatients': 'إجمالي المرضى',
+      'activePatients': 'مرضى نشطون',
+      'highRiskCases': 'حالات عالية الخطورة',
+      'needReview': 'تحتاج مراجعة',
+      'noUrgentCases': 'لا توجد حالات طارئة',
+      'inRangePatients': 'مرضى ضمن المعدل',
+      'stablePatients': 'مرضى مستقرون',
+      'highRiskPatients': 'مرضى عالي الخطورة',
+      'todayAppointments': 'مواعيد اليوم',
+      'noHighRiskPatients': 'لا توجد حالات عالية الخطورة حاليًا.',
+      'noAppointmentsYet': 'لا توجد مواعيد بعد.',
+      'doctorDashboard': 'لوحة الطبيب',
+      'smallScreenMessage':
+          'هذه اللوحة تعمل بشكل أفضل على التابلت أو اللابتوب أو شاشة الكمبيوتر لإدارة الرسوم والمواعيد بشكل أوضح.',
+      'appointmentReminder': 'تذكير موعد',
+      'appointmentNow': 'الموعد الآن',
+      'startsIn5': 'يبدأ خلال 5 دقائق.',
+      'startingNow': 'يبدأ الآن.',
+    },
+  };
+
+  String t(String key) {
+    final lang = context.watch<AppSettingsProvider>().language;
+    return _strings[lang]?[key] ?? _strings['en']?[key] ?? key;
+  }
+
+  bool get _isArabic => context.watch<AppSettingsProvider>().language == 'ar';
+  bool get _isDark => context.watch<AppSettingsProvider>().darkMode;
+
+  TextDirection get _pageDirection =>
+      _isArabic ? TextDirection.rtl : TextDirection.ltr;
+
+  Color get _pageBg => _isDark ? darkBg : bgColor;
+  Color get _cardColor => _isDark ? darkCard : Colors.white;
+  Color get _tileColor => _isDark ? darkTile : const Color(0xffF9FCFF);
+  Color get _softTileColor => _isDark ? const Color(0xff173A5E) : softBlue;
+  Color get _titleColor => _isDark ? darkText : textBlue;
+  Color get _subtitleColor => _isDark ? darkSubText : Colors.black45;
+  Color get _borderColor =>
+      _isDark ? Colors.white.withOpacity(0.08) : const Color(0xffD7EBFF);
+
+  void _openSettings() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PatientSettingsScreen(userId: widget.doctorId),
+      ),
+    );
+  }
 
   bool isLoadingDoctor = true;
 
@@ -106,12 +227,12 @@ class _DoctorWebDashboardState extends State<DoctorWebDashboard> {
   DateTimeRange? selectedDateRange;
   DateTimeRange? tempDateRange;
 
-  final List<String> menuTitles = [
-    'Dashboard',
-    'My Patients',
-    'Appointments',
-    'Messages',
-    'Profile',
+  List<String> get menuTitles => [
+    t('dashboard'),
+    t('myPatients'),
+    t('appointments'),
+    t('messages'),
+    t('profile'),
   ];
 
   final List<IconData> menuIcons = [
@@ -505,8 +626,8 @@ class _DoctorWebDashboardState extends State<DoctorWebDashboard> {
                                   ),
                                 ),
                                 const SizedBox(height: 16),
-                                const Text(
-                                  'No notifications yet',
+                                Text(
+                                  t('noNotificationsYet'),
                                   style: TextStyle(
                                     color: textBlue,
                                     fontSize: 17,
@@ -514,8 +635,8 @@ class _DoctorWebDashboardState extends State<DoctorWebDashboard> {
                                   ),
                                 ),
                                 const SizedBox(height: 5),
-                                const Text(
-                                  'Appointment alerts will appear here.',
+                                Text(
+                                  t('appointmentAlertsHere'),
                                   style: TextStyle(
                                     color: Colors.black45,
                                     fontSize: 13,
@@ -1098,56 +1219,59 @@ class _DoctorWebDashboardState extends State<DoctorWebDashboard> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: bgColor,
-      drawer: MediaQuery.of(context).size.width < 950
-          ? Drawer(
-              backgroundColor: mainBlue,
-              child: _buildMobileSidebarContent(),
-            )
-          : null,
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          final isDesktop = constraints.maxWidth >= 950;
-          final isTablet = constraints.maxWidth >= 650;
+    return Directionality(
+      textDirection: _pageDirection,
+      child: Scaffold(
+        backgroundColor: _pageBg,
+        drawer: MediaQuery.of(context).size.width < 950
+            ? Drawer(
+                backgroundColor: mainBlue,
+                child: _buildMobileSidebarContent(),
+              )
+            : null,
+        body: LayoutBuilder(
+          builder: (context, constraints) {
+            final isDesktop = constraints.maxWidth >= 950;
+            final isTablet = constraints.maxWidth >= 650;
 
-          if (isDesktop) {
-            return Row(
-              children: [
-                _buildSidebar(),
-                Expanded(
-                  child: Column(
-                    children: [
-                      _buildTopBar(),
-                      Expanded(
-                        child: SingleChildScrollView(
-                          padding: const EdgeInsets.all(26),
-                          child: _buildSelectedPage(),
+            if (isDesktop) {
+              return Row(
+                children: [
+                  _buildSidebar(),
+                  Expanded(
+                    child: Column(
+                      children: [
+                        _buildTopBar(),
+                        Expanded(
+                          child: SingleChildScrollView(
+                            padding: const EdgeInsets.all(26),
+                            child: _buildSelectedPage(),
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-              ],
-            );
-          }
+                ],
+              );
+            }
 
-          if (isTablet) {
-            return Column(
-              children: [
-                _buildMobileTopBar(),
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(18),
-                    child: _buildSelectedPage(),
+            if (isTablet) {
+              return Column(
+                children: [
+                  _buildMobileTopBar(),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(18),
+                      child: _buildSelectedPage(),
+                    ),
                   ),
-                ),
-              ],
-            );
-          }
+                ],
+              );
+            }
 
-          return _mobileSmallScreenFallback();
-        },
+            return _mobileSmallScreenFallback();
+          },
+        ),
       ),
     );
   }
@@ -1173,8 +1297,8 @@ class _DoctorWebDashboardState extends State<DoctorWebDashboard> {
               ),
             ),
             const SizedBox(height: 22),
-            const Text(
-              'Doctor Dashboard',
+            Text(
+              t('doctorDashboard'),
               style: TextStyle(
                 color: textBlue,
                 fontSize: 24,
@@ -1182,8 +1306,8 @@ class _DoctorWebDashboardState extends State<DoctorWebDashboard> {
               ),
             ),
             const SizedBox(height: 10),
-            const Text(
-              'This dashboard works best on tablet, laptop, or desktop screens for better chart and appointment management.',
+            Text(
+              t('smallScreenMessage'),
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Colors.black54,
@@ -1201,8 +1325,8 @@ class _DoctorWebDashboardState extends State<DoctorWebDashboard> {
     return Container(
       height: 76,
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: const BoxDecoration(
-        color: Colors.white,
+      decoration: BoxDecoration(
+        color: _cardColor,
         boxShadow: [
           BoxShadow(
             color: Color(0x10000000),
@@ -1236,6 +1360,11 @@ class _DoctorWebDashboardState extends State<DoctorWebDashboard> {
               ),
             ),
           ),
+          IconButton(
+            onPressed: _openSettings,
+            icon: const Icon(Icons.settings_outlined, color: mainBlue),
+            tooltip: t('settings'),
+          ),
           const CircleAvatar(
             radius: 18,
             backgroundColor: mainBlue,
@@ -1257,8 +1386,8 @@ class _DoctorWebDashboardState extends State<DoctorWebDashboard> {
             size: 46,
           ),
           const SizedBox(height: 12),
-          const Text(
-            'Doctor Panel',
+          Text(
+            t('doctorPanel'),
             style: TextStyle(
               color: Colors.white,
               fontSize: 22,
@@ -1312,6 +1441,60 @@ class _DoctorWebDashboardState extends State<DoctorWebDashboard> {
                   ),
                 );
               },
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 18),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(18),
+              onTap: _openSettings,
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.settings_outlined, color: Colors.white),
+                    const SizedBox(width: 10),
+                    Text(
+                      t('settings'),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 18),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(18),
+              onTap: _openSettings,
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.settings_outlined, color: Colors.white),
+                    const SizedBox(width: 10),
+                    Text(
+                      t('settings'),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
           Padding(
@@ -1374,8 +1557,8 @@ class _DoctorWebDashboardState extends State<DoctorWebDashboard> {
             ),
           ),
           const SizedBox(height: 14),
-          const Text(
-            'Doctor Panel',
+          Text(
+            t('doctorPanel'),
             style: TextStyle(
               color: Colors.white,
               fontSize: 23,
@@ -1383,8 +1566,8 @@ class _DoctorWebDashboardState extends State<DoctorWebDashboard> {
             ),
           ),
           const SizedBox(height: 4),
-          const Text(
-            'T1D Care Dashboard',
+          Text(
+            t('t1dCareDashboard'),
             style: TextStyle(color: Colors.white70, fontSize: 13),
           ),
           const SizedBox(height: 34),
@@ -1475,12 +1658,12 @@ class _DoctorWebDashboardState extends State<DoctorWebDashboard> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('Logout'),
-          content: const Text('Are you sure you want to logout?'),
+          title: Text(t('logout')),
+          content: Text(t('logoutQuestion')),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel'),
+              child: Text(t('cancel')),
             ),
             ElevatedButton(
               onPressed: () => Navigator.pop(context, true),
@@ -1488,7 +1671,7 @@ class _DoctorWebDashboardState extends State<DoctorWebDashboard> {
                 backgroundColor: red,
                 foregroundColor: Colors.white,
               ),
-              child: const Text('Logout'),
+              child: Text(t('logout')),
             ),
           ],
         );
@@ -1506,8 +1689,8 @@ class _DoctorWebDashboardState extends State<DoctorWebDashboard> {
     return Container(
       height: 86,
       padding: const EdgeInsets.symmetric(horizontal: 28),
-      decoration: const BoxDecoration(
-        color: Colors.white,
+      decoration: BoxDecoration(
+        color: _cardColor,
         boxShadow: [
           BoxShadow(
             color: Color(0x10000000),
@@ -1528,6 +1711,22 @@ class _DoctorWebDashboardState extends State<DoctorWebDashboard> {
           ),
 
           const Spacer(),
+
+          InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: _openSettings,
+            child: Container(
+              width: 46,
+              height: 46,
+              decoration: BoxDecoration(
+                color: _isDark ? darkTile : bgColor,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const Icon(Icons.settings_outlined, color: mainBlue),
+            ),
+          ),
+
+          const SizedBox(width: 14),
 
           // Notifications only
           InkWell(
@@ -2344,7 +2543,7 @@ class _DoctorWebDashboardState extends State<DoctorWebDashboard> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancel'),
+                  child: Text(t('cancel')),
                 ),
                 ElevatedButton(
                   onPressed: () async {
@@ -3323,7 +3522,7 @@ class _DoctorWebDashboardState extends State<DoctorWebDashboard> {
                         borderRadius: BorderRadius.circular(16),
                       ),
                     ),
-                    child: const Text('Cancel'),
+                    child: Text(t('cancel')),
                   ),
                   ElevatedButton.icon(
                     onPressed: isSavingPatientParams
@@ -4413,7 +4612,7 @@ class _DoctorWebDashboardState extends State<DoctorWebDashboard> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancel'),
+                  child: Text(t('cancel')),
                 ),
                 ElevatedButton(
                   onPressed: () async {
@@ -5364,7 +5563,7 @@ class _DoctorWebDashboardState extends State<DoctorWebDashboard> {
                               borderRadius: BorderRadius.circular(16),
                             ),
                           ),
-                          child: const Text('Cancel'),
+                          child: Text(t('cancel')),
                         ),
                         ElevatedButton.icon(
                           onPressed: isSavingProfile
