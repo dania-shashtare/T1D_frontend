@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../services/nutritionist_appointment_api.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'payment_screen.dart';
 
 class ContactNutritionistPage extends StatefulWidget {
   final String patientId;
@@ -20,6 +19,9 @@ class _ContactNutritionistPageState extends State<ContactNutritionistPage> {
 
   Map<String, dynamic>? appointmentData;
   List<dynamic> nutritionists = [];
+
+  GoogleMapController? mapController;
+
   LatLng getClinicLocation(String workplace) {
     final place = workplace.toLowerCase();
 
@@ -172,6 +174,22 @@ class _ContactNutritionistPageState extends State<ContactNutritionistPage> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Could not open map')));
+    }
+  }
+
+  Future<void> openRouteInGoogleMaps({required LatLng destination}) async {
+    final uri = Uri.parse(
+      'https://www.google.com/maps/dir/?api=1'
+      '&destination=${destination.latitude},${destination.longitude}'
+      '&travelmode=driving',
+    );
+
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+
+    if (!opened) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open directions')),
+      );
     }
   }
 
@@ -424,32 +442,64 @@ class _ContactNutritionistPageState extends State<ContactNutritionistPage> {
   }
 
   Widget clinicMapCard(String workplace) {
-    final location = getClinicLocation(workplace);
+    final clinicLocation = getClinicLocation(workplace);
 
-    return Container(
-      height: 210,
-      width: double.infinity,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: Colors.black.withOpacity(0.06)),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: GoogleMap(
-        initialCameraPosition: CameraPosition(target: location, zoom: 15),
-        markers: {
-          Marker(
-            markerId: const MarkerId('clinic_location'),
-            position: location,
-            infoWindow: InfoWindow(
-              title: 'Clinic Location',
-              snippet: workplace,
+    return Column(
+      children: [
+        Container(
+          height: 240,
+          width: double.infinity,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: Colors.black.withOpacity(0.06)),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: GoogleMap(
+            onMapCreated: (controller) {
+              mapController = controller;
+            },
+            initialCameraPosition: CameraPosition(
+              target: clinicLocation,
+              zoom: 12,
+            ),
+            markers: {
+              Marker(
+                markerId: const MarkerId('clinic_location'),
+                position: clinicLocation,
+                infoWindow: InfoWindow(
+                  title: 'Clinic Location',
+                  snippet: workplace,
+                ),
+              ),
+            },
+            zoomControlsEnabled: false,
+            myLocationButtonEnabled: false,
+            mapToolbarEnabled: true,
+          ),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xff3E7B14),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
+              ),
+            ),
+            onPressed: () {
+              openRouteInGoogleMaps(destination: clinicLocation);
+            },
+            icon: const Icon(Icons.directions),
+            label: const Text(
+              'Open Route in Google Maps',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
             ),
           ),
-        },
-        zoomControlsEnabled: false,
-        myLocationButtonEnabled: false,
-        mapToolbarEnabled: true,
-      ),
+        ),
+      ],
     );
   }
 
@@ -466,9 +516,7 @@ class _ContactNutritionistPageState extends State<ContactNutritionistPage> {
     final meetingLink = appointment?['meetingLink'] ?? '';
 
     final isOnline = visitType.toString().toLowerCase() == 'online';
-    final paymentStatus = appointment?['paymentStatus'] ?? 'not_required';
-    final isPaid = paymentStatus == 'paid';
-    final isPendingPayment = paymentStatus == 'pending';
+
     return ListView(
       padding: const EdgeInsets.all(18),
       children: [
@@ -555,7 +603,6 @@ class _ContactNutritionistPageState extends State<ContactNutritionistPage> {
                   ],
                 ),
               ),
-
               Padding(
                 padding: const EdgeInsets.fromLTRB(22, 24, 22, 24),
                 child: Column(
@@ -586,73 +633,8 @@ class _ContactNutritionistPageState extends State<ContactNutritionistPage> {
                           clinicMapCard(workplace),
                         ],
                       ),
-
                     const SizedBox(height: 26),
-
                     if (isOnline)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 14),
-                        child: Row(
-                          children: [
-                            Icon(
-                              isPaid
-                                  ? Icons.check_circle
-                                  : Icons.access_time_filled,
-                              color: isPaid ? Colors.green : Colors.orange,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              isPaid ? 'Payment Paid' : 'Payment Pending',
-                              style: TextStyle(
-                                color: isPaid ? Colors.green : Colors.orange,
-                                fontSize: 15,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                    if (isOnline && isPendingPayment)
-                      SizedBox(
-                        width: double.infinity,
-                        height: 56,
-                        child: ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xff1769B5),
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(18),
-                            ),
-                          ),
-                          onPressed: () async {
-                            final paid = await Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => PaymentScreen(
-                                  appointmentId: appointment['_id'],
-                                  appointmentType: 'nutritionist',
-                                  amount: appointment['paymentAmount'] ?? 10,
-                                ),
-                              ),
-                            );
-
-                            if (paid == true) {
-                              loadPage();
-                            }
-                          },
-                          icon: const Icon(Icons.payment),
-                          label: const Text(
-                            'Pay Now',
-                            style: TextStyle(
-                              fontSize: 17,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                      ),
-
-                    if (isOnline && isPaid)
                       SizedBox(
                         width: double.infinity,
                         height: 56,
@@ -678,9 +660,7 @@ class _ContactNutritionistPageState extends State<ContactNutritionistPage> {
                           ),
                         ),
                       ),
-
                     if (isOnline) const SizedBox(height: 14),
-
                     Row(
                       children: [
                         Expanded(
@@ -1048,7 +1028,7 @@ class _BookNutritionistPageState extends State<BookNutritionistPage> {
     setState(() => isBooking = true);
 
     try {
-      final result = await NutritionistAppointmentApi.bookAppointment(
+      await NutritionistAppointmentApi.bookAppointment(
         patientId: widget.patientId,
         nutritionistId: nutritionistUserId,
         visitType: selectedVisitType,
@@ -1058,45 +1038,11 @@ class _BookNutritionistPageState extends State<BookNutritionistPage> {
 
       setState(() => isBooking = false);
 
-      final appointment = result['appointment'];
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Appointment booked successfully')),
+      );
 
-      if (appointment['visitType'] == 'online' &&
-          appointment['paymentStatus'] == 'pending') {
-        final paid = await Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => PaymentScreen(
-              appointmentId: appointment['_id'],
-              appointmentType: 'nutritionist',
-              amount: appointment['paymentAmount'] ?? 10,
-            ),
-          ),
-        );
-
-        if (paid == true) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Payment completed and appointment booked'),
-            ),
-          );
-
-          Navigator.pop(context, true);
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Appointment created, payment is still pending'),
-            ),
-          );
-
-          Navigator.pop(context, true);
-        }
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Appointment booked successfully')),
-        );
-
-        Navigator.pop(context, true);
-      }
+      Navigator.pop(context, true);
     } catch (e) {
       setState(() => isBooking = false);
 

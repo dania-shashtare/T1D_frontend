@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/admin_api.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'auth_screen.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -213,18 +215,50 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Admin Dashboard',
-                        style: TextStyle(
-                          fontSize: 32,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xff06457c),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Manage patients, family accounts, doctors, and nutritionists',
-                        style: TextStyle(fontSize: 16, color: Colors.black54),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: const [
+                                Text(
+                                  'Admin Dashboard',
+                                  style: TextStyle(
+                                    fontSize: 32,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xff06457c),
+                                  ),
+                                ),
+                                SizedBox(height: 8),
+                                Text(
+                                  'Manage patients, family accounts, doctors, and nutritionists',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    color: Colors.black54,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          ElevatedButton.icon(
+                            onPressed: logoutAdmin,
+                            icon: const Icon(Icons.logout_rounded),
+                            label: const Text('Logout'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xff06457c),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 22,
+                                vertical: 14,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 28),
                       _buildStatsCards(),
@@ -936,6 +970,20 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         context,
       ).showSnackBar(SnackBar(content: Text('Error updating doctor: $e')));
     }
+  }
+
+  Future<void> logoutAdmin() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('userId');
+    await prefs.remove('role');
+
+    if (!mounted) return;
+
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (context) => const AuthScreen()),
+      (route) => false,
+    );
   }
 
   Future<void> updateNutritionistVerification(
